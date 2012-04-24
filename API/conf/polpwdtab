@@ -1,0 +1,31 @@
+# Comptes génériques
+gen:length_min:8
+gen:nb_char_alpha:6
+gen:nb_char_noalpha:2
+gen:duration_expiration:26
+gen:history_cycle:2
+gen:attempts_connections:5
+
+# Comptes nommes
+nom:length_min:8
+nom:nb_char_alpha:6
+nom:nb_char_noalpha:2
+nom:duration_expiration:26
+nom:history_cycle:2
+nom:attempts_connections:5
+
+# Comptes FTP/BATCH
+ftp:length_min:8
+ftp:nb_char_alpha:6
+ftp:nb_char_noalpha:2
+ftp:duration_expiration:26
+ftp:history_cycle:2
+ftp:attempts_connections:5
+
+# Comptes root
+root:length_min:8
+root:nb_char_alpha:6
+root:nb_char_noalpha:2
+root:duration_expiration:26
+root:history_cycle:2
+root:attempts_connections:5

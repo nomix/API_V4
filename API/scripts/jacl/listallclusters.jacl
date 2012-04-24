@@ -1,0 +1,10 @@
+# -------------------------------------------------------------------
+# stopallclusters.jacl
+# Syntaxe : stopallclusters
+# Version 1.0 16/11/2007 By S.OUELLET
+# -------------------------------------------------------------------
+set clusterlist [$AdminConfig list ServerCluster]
+foreach wascluster $clusterlist {
+ set clustername [$AdminConfig show $wascluster name]
+ puts $clustername
+}

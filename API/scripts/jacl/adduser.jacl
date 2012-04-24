@@ -1,0 +1,19 @@
+# -------------------------------------------------------------------
+# startserver.jacl
+# Syntaxe : startserver <application> <nodeName>
+# Version 1.0 11/07/2006 By S.OUELLET
+# -------------------------------------------------------------------
+set username [lindex $argv 0]
+set roleindexid [lindex $argv 1]
+set rolelist "administrators\noperators\nconfigurators\nmonitors"
+set rolelistid [$AdminConfig getid /AuthorizationTableExt:admin-authz.xml/RoleAssignmentExt:/]
+set userole [lindex $rolelistid $roleindexid]
+
+puts "oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo"
+puts "name $username"
+set userparm [list [list name $username ]]
+$AdminConfig create UserExt $userole $userparm
+puts " User created."
+$AdminConfig save
+puts " Configuration saved."
+puts "oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo"

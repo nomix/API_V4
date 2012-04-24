@@ -1,0 +1,575 @@
+#!/bin/ksh
+# Copyright 2010 XPRESS2PEOPLE
+# File                   : orainf.lib
+# Created on             : 2011/01/05
+# Family                 : ORACLE
+# Purpose 1              : This file contains Oracle information functions.
+# Purpose 2              : It can't be loaded by other oracle libraries.
+# Developpers            :
+#   Simon Ouellet can be reached at <simon.ouellet@x2p.fr>
+#   Benoit Garcia can be reached at <benoit.garcia@x2p.fr>
+#   Sylvain Ballaud can be reached at <sylvain.ballaud@x2p.fr>
+# History                : 
+#  2011/01/05 (S. Ballaud) initial version
+#######
+## Function declaration ##
+
+# 1) Function               : get_ora_info
+# 1) Purpose                : Get general informations about a database.
+# 1) Notes                  : ORACLE_HOME & ORACLE_SID must be set. This function use sysdba privileges.
+# 1) Version                : 1.0
+# 1) Syntax                 : get_ora_info 
+# 1) Optionals Parameters   : Nothing
+# 1) Mandatories Parameters : Nothing
+# 1) Example                : get_ora_info
+# 1) Return                 : 0=OK or !0=KO 
+# 1) History                :
+#   2011/01/05 (S. Ballaud) Initial version from oracle-base.com
+get_ora_info() {
+${ORACLE_HOME}/bin/sqlplus -S /nolog<<EOS
+connect / as sysdba
+
+set pagesize 1000
+set linesize 100
+set feedback off
+
+select * from v\$instance;
+select * from v\$version;
+select * from v\$sga;
+select * from v\$controlfile;
+select substr(d.name,1,60) "Datafile", NVL(d.status,'UNKNOWN') "Status", d.enabled "Enabled", LPad(To_Char(Round(d.bytes/1024000,2),'99999900'),10,' ') "Size (M)" from v\$datafile d order by 1;
+select * from v\$logfile;
+
+prompt
+set pagesize 14
+set feedback on
+
+exit
+EOS
+  return $?
+}
+
+# 2) Function               : get_ora_propval
+# 2) Purpose                : Get all database property values.
+# 2) Notes                  : ORACLE_HOME & ORACLE_SID must be set. This function use sysdba privileges.
+# 2) Version                : 1.0
+# 2) Syntax                 : get_ora_propval 
+# 2) Optionals Parameters   : Nothing
+# 2) Mandatories Parameters : Nothing
+# 2) Example                : get_ora_propval
+# 2) Return                 : 0=OK or !0=KO 
+# 2) History                :
+#   2011/01/05 (S. Ballaud) Initial version from oracle-base.com
+get_ora_propval() {
+${ORACLE_HOME}/bin/sqlplus -S /nolog<<EOS
+connect / as sysdba
+
+column property_value format A50
+
+select property_name, property_value from database_properties order by property_name; 
+
+exit
+EOS
+  return $?
+}
+
+
+# 3) Function               : get_ora_freespace
+# 3) Purpose                : Get space usage for each datafiles.
+# 3) Notes                  : ORACLE_HOME & ORACLE_SID must be set. This function use sysdba privileges.
+# 3) Version                : 1.0
+# 3) Syntax                 : get_ora_freespace 
+# 3) Optionals Parameters   : Nothing
+# 3) Mandatories Parameters : Nothing
+# 3) Example                : get_ora_freespace
+# 3) Return                 : 0=OK or !0=KO 
+# 3) History                :
+#   2011/01/05 (S. Ballaud) Initial version from oracle-base.com
+get_ora_freespace() {
+${ORACLE_HOME}/bin/sqlplus -S /nolog<<EOS
+connect / as sysdba
+
+set serveroutput on
+set pagesize 1000
+set linesize 255
+set feedback off
+
+select substr(df.tablespace_name,1,20) "Tablespace Name", substr(df.file_name,1,40) "File Name", round(df.bytes/1024/1024,2) "Size (M)", round(e.used_bytes/1024/1024,2) "Used (M)", round(f.free_bytes/1024/1024,2) "Free (M)", Rpad(' '|| Rpad('X',round(e.used_bytes*10/df.bytes,0), 'X'),11,'-') "% Used" from DBA_DATA_FILES DF, (select file_id, sum(Decode(bytes,NULL,0,bytes)) used_bytes from dba_extents group by file_id) E, (select Max(bytes) free_bytes, file_id from dba_free_space group by file_id) f where e.file_id (+) = df.file_id and df.file_id = f.file_id (+) order by df.tablespace_name, df.file_name;
+
+prompt
+set feedback on
+set pagesize 18 
+
+exit
+EOS
+  return $?
+}
+
+# 4) Function               : get_ora_roles
+# 4) Purpose                : Get a list of all roles and privleges granted to the specified user.
+# 4) Notes                  : ORACLE_HOME & ORACLE_SID must be set. This function use sysdba privileges.
+# 4) Version                : 1.0
+# 4) Syntax                 : get_ora_roles 
+# 4) Optionals Parameters   : Nothing
+# 4) Mandatories Parameters : Nothing
+# 4) Example                : get_ora_roles
+# 4) Return                 : 0=OK or !0=KO 
+# 4) History                :
+#   2011/01/05 (S. Ballaud) Initial version from oracle-base.com
+get_ora_roles() {
+${ORACLE_HOME}/bin/sqlplus -S /nolog<<EOS
+connect / as sysdba
+
+set serveroutput on
+set verify off
+
+select a.granted_role "Role", a.admin_option "Adm" from user_role_privs a;
+select a.privilege "Privilege", a.admin_option "Adm" from user_sys_privs a;
+
+set verify on
+
+exit
+EOS
+  return $?
+}
+
+# 5) Function               : get_ora_spparam
+# 5) Purpose                : Get a list of all sp parameters.
+# 5) Notes                  : ORACLE_HOME & ORACLE_SID must be set. This function use sysdba privileges.
+# 5) Version                : 1.0
+# 5) Syntax                 : get_ora_spparam 
+# 5) Optionals Parameters   : Nothing
+# 5) Mandatories Parameters : Nothing
+# 5) Example                : get_ora_spparam
+# 5) Return                 : 0=OK or !0=KO 
+# 5) History                :
+#   2011/01/05 (S. Ballaud) Initial version from oracle-base.com
+get_ora_spparam() {
+${ORACLE_HOME}/bin/sqlplus -S /nolog<<EOS
+connect / as sysdba
+
+set linesize 500
+column name format A30
+column value format A60
+column displayvalue format A60
+
+select sp.sid, sp.name, sp.value, sp.display_value from v\$spparameter sp order by sp.name, sp.sid;
+
+exit
+EOS
+  return $?
+}
+
+
+# 6) Function	            : get_ora_opencursors
+# 6) Purpose                : Get a list of all cursors currently open.
+# 6) Notes                  : ORACLE_HOME & ORACLE_SID must be set. This function use sysdba privileges.
+# 6) Version                : 1.0
+# 6) Syntax                 : get_ora_opencursors
+# 6) Optionals Parameters   : Nothing
+# 6) Mandatories Parameters : Nothing
+# 6) Example                : get_ora_opencursors
+# 6) Return                 : 0=OK or !0=KO
+# 6) History                :
+#   2011/01/05 (S. Ballaud) Initial version from oracle-base.com
+get_ora_opencursors() {
+${ORACLE_HOME}/bin/sqlplus -S /nolog<<EOS
+connect / as sysdba
+
+select a.user_name, a.sid, a.sql_text from v\$open_cursor a order by 1,2;
+
+exit
+EOS
+  return $?
+}
+
+# 7) Function	            : get_ora_tsfull
+# 7) Purpose                : Get a list of all tablespaces nearly full.
+# 7) Notes                  : ORACLE_HOME & ORACLE_SID must be set. This function use sysdba privileges.
+# 7) Version                : 1.0
+# 7) Syntax                 : get_ora_tsfull
+# 7) Optionals Parameters   : Nothing
+# 7) Mandatories Parameters : Nothing
+# 7) Example                : get_ora_tsfull
+# 7) Return                 : 0=OK or !0=KO
+# 7) History                :
+#   2011/01/12 (S. Ballaud) Initial version from oracle-base.com
+get_ora_tsfull() {
+${ORACLE_HOME}/bin/sqlplus -S /nolog<<EOS
+connect / as sysdba
+
+set serveroutput on
+set pagesize 1000
+set linesize 255
+set feedback off
+
+prompt
+prompt Tablespaces nearing 0% free
+prompt ***************************
+select a.tablespace_name, b.size_kb, a.free_kb, trunc((a.free_kb/b.size_kb) * 100) "FREE_%" from (select tablespace_name, trunc(sum(bytes)/1024) free_kb from dba_free_space group by tablespace_name) a, (select tablespace_name, trunc(sum(bytes)/1024) size_kb from dba_data_files group by tablespace_name) b where a.tablespace_name = b.tablespace_name and round((a.free_kb/b.size_kb) * 100,2) < 10
+/
+
+prompt
+set feedback on
+set pagesize 18
+
+exit
+EOS
+  return $?
+}
+
+# 8) Function               : get_ora_fileio
+# 8) Purpose                : Displays the amount of IO for each datafile.
+# 8) Notes                  : ORACLE_HOME & ORACLE_SID must be set. This function use sysdba privileges.
+# 8) Version                : 1.0
+# 8) Syntax                 : get_ora_fileio
+# 8) Optionals Parameters   : Nothing
+# 8) Mandatories Parameters : Nothing
+# 8) Example                : get_ora_fileio
+# 8) Return                 : 0=OK or !0=KO
+# 8) History                :
+#   2011/01/12 (S. Ballaud) Initial version from oracle-base.com
+get_ora_fileio() {
+${ORACLE_HOME}/bin/sqlplus -S /nolog<<EOS
+connect / as sysdba
+
+set pagesize 1000
+
+select substr(d.name,1,50) "File Name", f.phyblkrd "Blocks Read", f.phyblkwrt "Blocks Writen", f.phyblkrd + f.phyblkwrt "Total I/O" from v\$filestat f, v\$datafile d where d.file# = f.file# order by f.phyblkrd + f.phyblkwrt desc;
+
+set pagesize 18
+
+exit
+EOS
+  return $?
+}
+
+# 9) Function               : get_ora_runjobs
+# 9) Purpose                : Displays information about all jobs currently running.
+# 9) Notes                  : ORACLE_HOME & ORACLE_SID must be set. This function use sysdba privileges.
+# 9) Version                : 1.0
+# 9) Syntax                 : get_ora_runjobs
+# 9) Optionals Parameters   : Nothing
+# 9) Mandatories Parameters : Nothing
+# 9) Example                : get_ora_runjobs
+# 9) Return                 : 0=OK or !0=KO
+# 9) History                :
+#   2011/01/12 (S. Ballaud) Initial version from oracle-base.com
+get_ora_runjobs() {
+${ORACLE_HOME}/bin/sqlplus -S /nolog<<EOS
+connect / as sysdba
+
+set linesize 500
+set pagesize 1000
+set verify off
+
+select a.job "Job", a.sid, a.failures "Failures", substr(to_char(a.last_date,'DD-Mon-YYYY HH24:MI:SS'),1,20) "Last Date", substr(to_char(a.this_date,'DD-Mon-YYYY HH24:MI:SS'),1,20) "This Date" from dba_jobs_running a;
+
+set pagesize 14
+set verify on
+
+exit
+EOS
+  return $?
+}
+
+# 10) Function               : get_ora_sysparam
+# 10) Purpose                : Displays a list of all the system parameters.
+# 10) Notes                  : ORACLE_HOME & ORACLE_SID must be set. This function use sysdba privileges.
+# 10) Version                : 1.0
+# 10) Syntax                 : get_ora_sysparam
+# 10) Optionals Parameters   : Nothing
+# 10) Mandatories Parameters : Nothing
+# 10) Example                : get_ora_sysparam
+# 10) Return                 : 0=OK or !0=KO
+# 10) History                :
+#   2011/01/12 (S. Ballaud) Initial version from oracle-base.com
+get_ora_sysparam() {
+${ORACLE_HOME}/bin/sqlplus -S /nolog<<EOS
+connect / as sysdba
+
+set linesize 500
+column name value A30
+column value format A60
+
+select sp.name, sp.type, sp.value, sp.isses_modifiable, sp.issys_modifiable, sp.isinstance_modifiable  from v\$system_parameter sp order by sp.name;
+
+exit
+EOS
+  return $?
+}
+
+# 11) Function               : get_ora_lockobj
+# 11) Purpose                : Displays a list of all locked objects.
+# 11) Notes                  : ORACLE_HOME & ORACLE_SID must be set. This function use sysdba privileges.
+# 11) Version                : 1.0
+# 11) Syntax                 : get_ora_lockobj
+# 11) Optionals Parameters   : Nothing
+# 11) Mandatories Parameters : Nothing
+# 11) Example                : get_ora_lockobj
+# 11) Return                 : 0=OK or !0=KO
+# 11) History                :
+#   2011/01/12 (S. Ballaud) Initial version from oracle-base.com
+get_ora_lockobj() {
+${ORACLE_HOME}/bin/sqlplus -S /nolog<<EOS
+connect / as sysdba
+
+set linesize 500
+set pagesize 1000
+set verify off
+column owner format A20
+column username format A20
+column object_owner format A20
+column object_name format A30
+column locked_mode format A15 
+
+select b.session_id as sid, NVL(b.oracle_username, '(oracle)') as username, a.owner as object_owner, a.object_name, decode(b.locked_mode, 0 ,'None', 1, 'Null (NULL)', 2, 'Row-S (SS)', 3, 'Row-X (XX)', 4, 'Share (S)', 5, 'S/Row-X (SSX)', 6, 'Exclusive (X)', b.locked_mode) locked_mode, b.os_user_name from dba_objects a, v\$locked_object b where a.object_id = b.object_id order by 1, 2, 3, 4; 
+
+set pagesize 14
+set verify on
+
+exit
+EOS
+  return $?
+}
+
+# 12) Function               : get_ora_monmem
+# 12) Purpose                : Displays memory allocations for the current database process.
+# 12) Notes                  : ORACLE_HOME & ORACLE_SID must be set. This function use sysdba privileges.
+# 12) Version                : 1.0
+# 12) Syntax                 : get_ora_monmem
+# 12) Optionals Parameters   : Nothing
+# 12) Mandatories Parameters : Nothing
+# 12) Example                : get_ora_monmem
+# 12) Return                 : 0=OK or !0=KO
+# 12) History                :
+#   2011/01/12 (S. Ballaud) Initial version from oracle-base.com
+get_ora_monmem() {
+${ORACLE_HOME}/bin/sqlplus -S /nolog<<EOS
+connect / as sysdba
+
+set linesize 200
+column username format A20
+column module format A20
+
+select NVL(a.username,'(oracle)') as username, a.module, a.program, trunc(b.value/1024) as memory_kb from v\$session a, v\$sesstat b, v\$statname c where a.sid = b.sid and b.statistic# = c.statistic# and c.name = 'session pga memory' and a.program is not null order by b.value desc;
+
+exit
+EOS
+  return $?
+}
+
+# 13) Function               : get_ora_sysevent
+# 13) Purpose                : Displays info on all system events.
+# 13) Notes                  : ORACLE_HOME & ORACLE_SID must be set. This function use sysdba privileges.
+# 13) Version                : 1.0
+# 13) Syntax                 : get_ora_sysevent
+# 13) Optionals Parameters   : Nothing
+# 13) Mandatories Parameters : Nothing
+# 13) Example                : get_ora_sysevent
+# 13) Return                 : 0=OK or !0=KO
+# 13) History                :
+#   2011/01/12 (S. Ballaud) Initial version from oracle-base.com
+get_ora_sysevent() {
+${ORACLE_HOME}/bin/sqlplus -S /nolog<<EOS
+connect / as sysdba
+
+select event, total_waits, total_timeouts, time_waited, average_wait, time_waited_micro from v\$system_event order by event;
+
+exit
+EOS
+  return $?
+}
+
+# 14) Function               : get_ora_sessionio
+# 14) Purpose                : Displays I/O info on all database sessions.
+# 14) Notes                  : ORACLE_HOME & ORACLE_SID must be set. This function use sysdba privileges.
+# 14) Version                : 1.0
+# 14) Syntax                 : get_ora_sessionio
+# 14) Optionals Parameters   : Nothing
+# 14) Mandatories Parameters : Nothing
+# 14) Example                : get_ora_ssessionio
+# 14) Return                 : 0=OK or !0=KO
+# 14) History                :
+#   2011/01/12 (S. Ballaud) Initial version from oracle-base.com
+get_ora_sessionio() {
+${ORACLE_HOME}/bin/sqlplus -S /nolog<<EOS
+connect / as sysdba
+
+set linesize 500
+set pagesize 1000
+column username format A15
+
+select NVL(s.username, '(oracle)') as username, s.osuser, s.sid, s.serial#, si.block_gets, si.consistent_gets, si.physical_reads, si.block_changes, si.consistent_changes from v\$session s, v\$sess_io si where s.sid = si.sid order by s.username, s.osuser;
+
+set pagesize 14
+
+exit
+EOS
+  return $?
+}
+
+# 15) Function               : get_ora_activesession
+# 15) Purpose                : Displays info on all active database sessions.
+# 15) Notes                  : ORACLE_HOME & ORACLE_SID must be set. This function use sysdba privileges.
+# 15) Version                : 1.0
+# 15) Syntax                 : get_ora_activesession
+# 15) Optionals Parameters   : Nothing
+# 15) Mandatories Parameters : Nothing
+# 15) Example                : get_ora_activesession
+# 15) Return                 : 0=OK or !0=KO
+# 15) History                :
+#   2011/01/12 (S. Ballaud) Initial version from oracle-base.com
+get_ora_activesession() {
+${ORACLE_HOME}/bin/sqlplus -S /nolog<<EOS
+connect / as sysdba
+
+set linesize 500
+set pagesize 1000
+column username format A15
+column machine format A25
+column logon_time format A20
+
+select NVL(s.username, '(oracle)') as username, s.osuser, s.sid, s.serial#, p.spid, s.lockwait, s.status, s.module, s.machine, s.program, to_char(s.logon_Time, 'DD-MON-YYYY HH24:MI:SS') as logon_time from v\$session s, v\$process p where s.paddr = p.addr and s.status = 'ACTIVE' order by s.username, s.osuser;
+
+set pagesize 14
+
+exit
+EOS
+  return $?
+}
+
+# 16) Function               : show_ora_tuning
+# 16) Purpose                : Displays several performance indicators and comments on the value.
+# 16) Notes                  : ORACLE_HOME & ORACLE_SID must be set. This function use sysdba privileges.
+# 16) Version                : 1.0
+# 16) Syntax                 : show_ora_tuning
+# 16) Optionals Parameters   : Nothing
+# 16) Mandatories Parameters : Nothing
+# 16) Example                : show_ora_tuning
+# 16) Return                 : 0=OK or !0=KO
+# 16) History                :
+#   2011/01/12 (S. Ballaud) Initial version from oracle-base.com
+show_ora_tuning() {
+${ORACLE_HOME}/bin/sqlplus -S /nolog<<EOS
+connect / as sysdba
+
+set serveroutput on
+set linesize 1000
+set feedback off
+
+select * from v\$database;
+
+prompt
+
+declare v_value number;
+
+function format(p_value in number)
+	return varchar2 IS
+begin
+	return lpad(to_char(round(p_value,2),'990.00') || '%',8,' ') || ' ';
+end;
+
+begin
+-- ------------------------------
+-- - Dictionary Cache Hit Ratio -
+-- ------------------------------
+select (1 - (sum(getmisses)/(sum(gets) + sum(getmisses)))) * 100 into v_value from v\$rowcache;
+
+DBMS_Output.Put('Dictionary Cache Hit Ratio       : ' || Format(v_value));
+if v_value < 90 then
+	DBMS_Output.Put_Line('Increase SHARED_POOL_SIZE parameter to bring value above 90%');
+else
+	DBMS_Output.Put_Line('Value Acceptable.');
+end if;
+
+-- -------------------------
+-- Library Cache Hit Ratio -
+-- -------------------------
+select (1 - (sum(reloads)/(sum(pins) + sum(reloads)))) * 100 into v_value from v\$librarycache;
+
+DBMS_Output.Put('Library Cache Hit Ratio       : ' || Format(v_value));
+if v_value < 99 then
+        DBMS_Output.Put_Line('Increase SHARED_POOL_SIZE parameter to bring value above 99%');
+else
+        DBMS_Output.Put_Line('Value Acceptable.');
+end if;
+
+-- ---------------------------------
+-- DB Block Buffer Cache Hit Ratio -
+-- ---------------------------------
+
+select (1 - (phys.value / (db.value + cons.value))) * 100 into v_value from v\$sysstat phys, v\$sysstat db, v\$sysstat cons where phys.name = 'physical reads' and db.name = 'db block gets' and cons.name = 'consistent gets';
+
+DBMS_Output.Put('DB Block Buffer Cache Hit Ratio       : ' || Format(v_value));
+if v_value < 89 then
+        DBMS_Output.Put_Line('Increase DB_BLOCK_BUFFERS parameter to bring value above 89%');
+else
+        DBMS_Output.Put_Line('Value Acceptable.');
+end if;
+
+-- -----------------
+-- Latch Hit Ratio -
+-- -----------------
+select (1 - (sum(misses)/sum(gets))) * 100 into v_value from v\$latch;
+
+DBMS_Output.Put('Latch Hit Ratio       : ' || Format(v_value));
+if v_value < 98 then
+        DBMS_Output.Put_Line('Increase number of latches to bring value above 98%');
+else
+        DBMS_Output.Put_Line('Value Acceptable.');
+end if;
+
+-- -----------------
+-- Disk Sort Ratio -
+-- -----------------
+
+select (disk.value/mem.value) * 100 into v_value from v\$sysstat disk, v\$sysstat mem where disk.name = 'sorts (disk)' and mem.name = 'sorts (memory)';
+
+DBMS_Output.Put('Disk Sort Ratio       : ' || Format(v_value));
+if v_value > 5 then
+        DBMS_Output.Put_Line('Increase SORT_AREA_SIZE parameter to bring value above 89%');
+else
+        DBMS_Output.Put_Line('Value Acceptable.');
+end if;
+
+-- -------------------------
+-- Rollback Segement Waits -
+-- -------------------------
+
+select (sum(waits) / sum (gets)) * 100 into v_value from v\$rollstat;
+
+DBMS_Output.Put('Rollback Segment Waits       : ' || Format(v_value));
+if v_value > 5 then
+        DBMS_Output.Put_Line('Increase Number of Rollback Segments to bring value above 89%');
+else
+        DBMS_Output.Put_Line('Value Acceptable.');
+end if;
+
+-- ---------------------
+-- Dispatcher Workload -
+-- ---------------------
+
+select NVL((sum(busy) / (sum(busy) + sum(idle))) * 100,0) into v_value from v\$dispatcher;
+
+DBMS_Output.Put('Dispatcher Workload       : ' || Format(v_value));
+if v_value > 50 then
+        DBMS_Output.Put_Line('Increase MTS_DISPATCHERS to bring value above 89%');
+else
+        DBMS_Output.Put_Line('Value Acceptable.');
+end if;
+
+end;
+/
+
+prompt 
+set feedback on
+
+exit
+EOS
+  return $?
+}
+
+
+
+

@@ -1,0 +1,12 @@
+set keyvalue [lindex $argv 0]
+set newvalue [lindex $argv 1]
+set nsblist [$AdminConfig list StringNameSpaceBinding]
+foreach nsb $nsblist {
+ set nsbname [$AdminConfig showAttribute $nsb name]
+ if { $nsbname == $keyvalue } {
+  puts "JNDI entry found : $nsbname"
+  catch {$AdminConfig modify $nsb [list [list stringToBind $newvalue]]} result
+  puts $result
+ }
+}
+$AdminConfig save

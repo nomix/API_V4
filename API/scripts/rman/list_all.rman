@@ -1,0 +1,4 @@
+# List all the backup found in the rman recovery catalog.
+LIST BACKUP;
+# List all the archivelog found in the rman recovery catalog.
+LIST ARCHIVELOG ALL;

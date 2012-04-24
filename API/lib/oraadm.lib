@@ -1,0 +1,154 @@
+#!/bin/ksh
+# Copyright 2010 XPRESS2PEOPLE
+# File                   : oraadm.lib
+# Created on             : 2010/11/19
+# Family                 : ORACLE
+# Purpose 1              : This file contains Oracle administration functions.
+# Purpose 2              : It can't be loaded by other oracle libraries.
+# Developpers            :
+#   Simon Ouellet can be reached at <simon.ouellet@x2p.fr>
+#   Benoit Garcia can be reached at <benoit.garcia@x2p.fr>
+#   Sylvain Ballaud can be reached at <sylvain.ballaud@x2p.fr>
+# History                : 
+#  2010/11/19 (S. Ouellet) initial version
+#######
+## Function declaration ##
+
+# 1) Function               : start_ora_instance
+# 1) Purpose                : start a database instance
+# 1) Notes                  : /etc/oratab must exist and must be filled.
+# 1) Version                : 1.0
+# 1) Syntax                 : start_ora_instance <SID>
+# 1) Optionals Parameters   : Nothing
+# 1) Mandatories Parameters : <SID : System ID>
+# 1) Example                : start_ora_instance ORCL
+# 1) Return                 : 1 in case of error. 0 for a successfull start.
+# 1) History                :
+#   2010/11/19 (S. Ouellet) Initial version
+start_ora_instance() {
+ set_ora_env ${1}
+ run_ora_sqldba "startup"
+ return $?
+}
+
+# 2) Function               : stop_ora_instance
+# 2) Purpose                : stop a database instance
+# 2) Notes                  : /etc/oratab must exist and must be filled.
+# 2) Version                : 1.0
+# 2) Syntax                 : stop_ora_instance <SID>
+# 2) Optionals Parameters   : Nothing
+# 2) Mandatories Parameters : <SID : System ID>
+# 2) Example                : stop_ora_instance ORCL
+# 2) Return                 : 1 in case of error. 0 for a successfull start.
+# 2) History                :
+#   2010/11/19 (S. Ouellet) Initial version
+stop_ora_instance() {
+ set_ora_env ${1}
+ run_ora_sqldba "shutdown immediate"
+ return $?
+}
+
+# 3) Function               : start_ora_allinstance
+# 3) Purpose                : start all instance declared on the /etc/oratab and activated (Flag set to Y)
+# 3) Notes                  : /etc/oratab must exist and must be filled.
+# 3) Version                : 1.0
+# 3) Syntax                 : start_ora_allinstance
+# 3) Optionals Parameters   : Nothing
+# 3) Mandatories Parameters : Nothing
+# 3) Example                : start_ora_allinstance
+# 3) Return                 : 1 in case of error. 0 for a successfull start.
+# 3) History                :
+#   2010/11/19 (S. Ouellet) Initial version
+start_ora_allinstance() {
+ for _sid in `get_ora_activesidlist`
+ do
+  start_ora_instance ${_sid} &
+ done
+ wait
+ return $?
+}
+
+# 4) Function               : stop_ora_allinstance
+# 4) Purpose                : Stop all instance declared on the /etc/oratab and activated (Flag set to Y)
+# 4) Notes                  : /etc/oratab must exist and must be filled.
+# 4) Version                : 1.0
+# 4) Syntax                 : stop_ora_allinstance
+# 4) Optionals Parameters   : Nothing
+# 4) Mandatories Parameters : Nothing
+# 4) Example                : stop_ora_allinstance
+# 4) Return                 : 1 in case of error. 0 for a successfull stop.
+# 4) History                :
+#   2010/11/19 (S. Ouellet) Initial version
+stop_ora_allinstance() {
+ for _sid in `get_ora_activesidlist`
+ do
+  stop_ora_instance ${_sid} &
+ done
+ wait
+ return $?
+}
+
+# 5) Function               : start_ora_listener
+# 5) Purpose                : Start the Oracle listener
+# 5) Notes                  : the variable LISTENER_HOME from oracle.conf must be set correctly. If not, the first oh entry from the oratab will be use.
+# 5) Version                : 1.0
+# 5) Syntax                 : start_ora_listener
+# 5) Optionals Parameters   : Nothing
+# 5) Mandatories Parameters : Nothing
+# 5) Example                : start_ora_listener
+# 5) Return                 : 1 in case of error. 0 for a successfull start.
+# 5) History                :
+#   2010/11/19 (S. Ouellet) Initial version
+start_ora_listener() {
+ if [[ -z $LISTENER_HOME ]]
+ then # LISTENER_HOME is not set, set the default
+  LISTENER_HOME=$(get_ora_oh `get_ora_activesidlist | head -1`)
+ fi
+ export ORACLE_HOME=${LISTENER_HOME}
+ ${ORACLE_HOME}/bin/lsnrctl start
+ return $?
+}
+
+# 6) Function               : stop_ora_listener
+# 6) Purpose                : Stop the Oracle listener
+# 6) Notes                  : the variable LISTENER_HOME from oracle.conf must be set correctly. If not, the first oh entry from the oratab will be use.
+# 6) Version                : 1.0
+# 6) Syntax                 : stop_ora_listener
+# 6) Optionals Parameters   : Nothing
+# 6) Mandatories Parameters : Nothing
+# 6) Example                : stop_ora_listener
+# 6) Return                 : 1 in case of error. 0 for a successfull start.
+# 6) History                :
+#   2010/11/19 (S. Ouellet) Initial version
+stop_ora_listener() {
+ if [[ -z $LISTENER_HOME ]]
+ then # LISTENER_HOME is not set, set the default
+  LISTENER_HOME=$(get_ora_oh `get_ora_activesidlist | head -1`)
+ fi
+ export ORACLE_HOME=${LISTENER_HOME}
+ ${ORACLE_HOME}/bin/lsnrctl stop
+ return $?
+}
+
+# 7) Function               : ctl_ora_agent
+# 7) Purpose                : Control the Oracle agent. start, stop, etc..
+# 7) Notes                  : the variable AGENT_HOME from oracle.conf must be set correctly. If not, the first oh entry from the oratab will be use.
+# 7) Version                : 1.0
+# 7) Syntax                 : ctl_ora_agent <action>
+# 7) Optionals Parameters   : Nothing
+# 7) Mandatories Parameters : <action>
+# 7) Example 1              : ctl_ora_agent start
+# 7) Example 2              : ctl_ora_agent stop
+# 7) Return                 : 1 in case of error. 0 for a successfull start.
+# 7) History                :
+#   2010/11/19 (S. Ouellet) Initial version
+ctl_ora_agent() {
+ if [[ -z $AGENT_HOME ]]
+ then # LISTENER_HOME is not set, set the default
+  LISTENER_HOME=$(get_ora_oh `get_ora_activesidlist | head -1`)
+ fi
+ export ORACLE_HOME=${AGENT_HOME}
+ ${ORACLE_HOME}/bin/emctl ${1} agent
+ return $?
+}
+

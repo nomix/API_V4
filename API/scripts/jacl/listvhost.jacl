@@ -1,0 +1,7 @@
+# -------------------------------------------------------------------
+# startserver.jacl
+# Syntaxe : startserver <application> <nodeName>
+# Version 1.0 11/07/2006 By S.OUELLET
+# -------------------------------------------------------------------
+set result [$AdminConfig list VirtualHost]
+puts $result

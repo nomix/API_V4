@@ -1,0 +1,50 @@
+#!/bin/ksh
+# Copyright 2010 XPRESS2PEOPLE
+# File                    : aixins.lib
+# Created on              : 2010/08/27
+# Family                  : AIX
+# Purpose                 : This file contains install functions for AIX components.
+# Developpers             :
+#  Simon Ouellet can be reached at <simon.ouellet@x2p.fr>
+# History                 :
+#  2010/08/27 (S. Ouellet) Initial version.
+
+# 1) Function               : ins_aix_logrotate
+# 1) Purpose                : Install logrotate RPM and all other required RPMs package
+# 1) Notes                  : You must be root to execute this function. You must load aixcom.lib.
+# 1) Version                : 1.0
+# 1) Syntax                 : ins_aix_logrotate
+# 1) Optionals Parameters   : Nothing
+# 1) Mandatories Parameters : Nothing 
+# 1) Example                : ins_aix_logrotate
+# 1) Return                 : 0=install successfull
+# 1) History                : 2010/08/26 (S. Ouellet) Initial version. Response to ticket #18 (http://trac.x2p.fr/API/ticket/18)
+ins_aix_logrotate() {
+ for package_string in `ls ${APIHOME}/pkg/RPMs/logrotate-AIX5.1/_*`
+ do
+  _order_id=`echo ${package_string} | awk -F"_" '{ print $2 }'` 
+  _pkg_name=`echo ${package_string} | awk -F"_" '{ print $3 }'` 
+  _pkg_parameters=`echo ${package_string} | awk -F"_" '{ print $4,$5,$6,$7 }'` 
+  ins_aix_rpm ${APIHOME}/pkg/RPMs/depots/${_pkg_name} ${_pkg_parameters}
+ done
+}
+
+# 2) Function               : ins_aix_iperf
+# 2) Purpose                : Install iperf RPM
+# 2) Notes                  : You must be root to execute this function. You must load aixcom.lib.
+# 2) Version                : 1.0 
+# 2) Syntax                 : ins_aix_iperf
+# 2) Optionals Parameters   : Nothing
+# 2) Mandatories Parameters : Nothing
+# 2) Example                : ins_aix_iperf
+# 2) Return                 : 0=install successfull
+# 2) History                : 2010/11/10 (S. Ouellet) Initial version. Response to ticket #18 (http://trac.x2p.fr/API/ticket/18)
+ins_aix_iperf() {
+ for package_string in `ls ${APIHOME}/pkg/RPMs/iperf-AIX5.1/_*`
+ do
+  _order_id=`echo ${package_string} | awk -F"_" '{ print $2 }'`
+  _pkg_name=`echo ${package_string} | awk -F"_" '{ print $3 }'`
+  _pkg_parameters=`echo ${package_string} | awk -F"_" '{ print $4,$5,$6,$7 }'`
+  ins_aix_rpm ${APIHOME}/pkg/RPMs/depots/${_pkg_name} ${_pkg_parameters}
+ done
+}

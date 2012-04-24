@@ -1,0 +1,4 @@
+set newstatus [lindex $argv 0]
+set securityconf [$AdminConfig list Security]
+$AdminConfig modify $securityconf [list [list enabled $newstatus]]
+$AdminConfig save

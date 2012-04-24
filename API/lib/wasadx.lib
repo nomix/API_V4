@@ -1,0 +1,468 @@
+#!/bin/ksh
+# LIBRARY 02
+# WebSphere Common Administration function libraries
+#Author : S.Ouellet XPRESS2PEOPLE for Euroclear
+# Version 1.01 : 15 novembre 2006 by SO Base release
+# Version 2.01 : 28 decembre 2006 by SO V2 Base release (new functions)
+# Version 2.02 : 28 decembre 2006 by SO F02.09 Corrections
+# Version 2.03 : 20 february 2007 by SO F02.01 and F02.02 improvment
+# Version 2.04 : 29      mai 2007 by SO F02.17 and F02.18 added
+# Version 2.05 : 11 february 2008 by SO F02.01 & F02.02 bug fixed
+# Version 2.06 : 11 february 2008 by SO F02.22 added (change JNDI value)
+# Version 2.07 : 12 february 2008 by SO F02.01.03 bug fix and F02.02.03 bug fix
+# Version 2.08 : 09     June 2008 by SO F02.05.02 and F02.06.02 bug fixed (use startServer.sh and stopServer.sh instead
+# Version 2.09 : 25 septembr 2008 by SO F02.01.04 (profilename sourced from the wastab)
+#                                       of jacl script.
+# Version 3.1r11 : 05 nov    2008 by SO F02.23.01 added (generate the Introscope EP agent properties)
+# Requirement : conf/
+############################################################################
+#################################################
+#### CHECK IF waslib.conf have been source ######
+if [[ -z $APIHOME ]];
+then
+ echo "*************************************************************"
+ echo "WARNING! waslib.conf have not been source\nPlease source it : . SCRIPTS_PATH/conf/waslib.conf"
+ echo "*************************************************************"
+fi
+#################################################
+
+#. ${APIHOME}/lib/wcomlib-02.fnc
+
+##
+# Public functions
+
+#F02.01.03
+#Function : nodeagentstart, start the node agent on the current node.
+#Syntaxe  : nodeagentstart
+#Return   : 0=OK,1=NOK,255=AllreadyStarted
+#Notes    :
+nodeagentstart() {
+ RC=0
+  for i in `_listwastab | grep nodeagent`;
+  do
+   ### Set the appropriate var base on the wastab entries
+   _wastabentrie $i
+   ##NODEPROFILENAME=`find $AS_PATH -name ${NODE} -type d | egrep -vi "dmgr|\/temp\/|\/backup\/|\/tranlog\/" | sed 's/\(.*\)profiles\(.*\)/\2/g' | egrep config |awk -F"/" '{ print $2 }'` ## Version 3.1r8
+   ### If entry is active and it's on the good cell etc..
+   if [[ ${ACTIVE} == "Y" ]];
+   then
+    $AS_PATH/profiles/${NODEPROFILENAME}/bin/startNode.sh  
+    let RC=${RC}+${?}
+   fi
+  done
+ return $RC
+}
+
+#F02.02.03
+#Function : nodeagentstop, stop the node agent on the current node.
+#Syntaxe  : nodeagentstop
+#Return   : 0=OK,1=NOK
+#Notes    :
+nodeagentstop() {
+ RC=0
+  for i in `_listwastab | grep nodeagent`;
+  do
+   ### Set the appropriate var base on the wastab entries
+   _wastabentrie $i
+   ##NODEPROFILENAME=`find $AS_PATH -name ${NODE} -type d | egrep -vi "dmgr|\/temp\/|\/backup\/|\/tranlog\/" | sed 's/\(.*\)profiles\(.*\)/\2/g' | egrep config |awk -F"/" '{ print $2 }'` # Version 3.1r8
+   ### If entry is active and on the good cell etc..
+   if [[ ${ACTIVE} == "Y" ]];
+   then
+    $AS_PATH/profiles/${NODEPROFILENAME}/bin/stopNode.sh  
+    let RC=${RC}+${?}
+   fi
+  done
+ return $RC
+}
+
+#F02.03.02
+#Function : managerstart, start the dmgr on the current node.
+#Syntaxe  : managerstart
+#Return   : 0=OK,1=NOK,255=AllreadyStarted
+#Notes    :
+managerstart() {
+ for i in `_listwastab | grep ":dmgr:"`;
+ do
+  _wastabentrie $i
+  ${PATHPROFILE}/bin/startManager.sh
+  return $? 
+ done
+}
+
+#F02.04.02
+#Function : managerstop, stop the dmgr on the current node.
+#Syntaxe  : managerstop
+#Return   : 0=OK,1=NOK
+#Notes    :
+managerstop() {
+ for i in `_listwastab | grep ":dmgr:"`;
+ do 
+  _wastabentrie $i
+  PID2KILL=`ps -elf | grep ${PATHPROFILE} | grep ${NODE} | grep ${CELL} | awk '{ print $4 }'`
+  if [[ -n $PID2KILL ]]
+  then
+   kill ${PID2KILL} >/dev/null 2>&1
+   sleep 5
+   kill -9 ${PID2KILL} >/dev/null 2>&1
+   if [[ `ps ${PID2KILL} | wc -l` -eq 0 ]]
+   then
+    return 0
+   else
+    return 1
+   fi
+  else
+   return 0 #No process to kill.
+  fi
+ done
+}
+
+#F02.05.02
+#Function : applicationserverstart, start an application server on a specific node
+#Syntaxe  : applicationserverstart <APPSERVNAME> <NODENAME>
+#Return   : 0=OK,1=NOK
+#Notes    :
+applicationserverstart() {
+ #RESULT=`sowsadmin ${APIHOME}/scripts/jacl/startserver.jacl ${1} ${2}` #VF02.05.01
+ #NODEPROFILENAME=`find $AS_PATH -name ${2} -type d | egrep -vi "dmgr|\/temp\/|\/backup\/|\/tranlog\/" | sed 's/\(.*\)profiles\(.*\)/\2/g' | egrep config | awk -F"/" '{ print $2 }'` ## Version 3.1r8
+ PATHPROFILE=`grep ":${2}:" ${APIHOME}/conf/wastab | grep ":${1}:" | awk -F":" '{ print $6 }'`
+ RESULT=`${PATHPROFILE}/bin/startServer.sh ${1}`
+ echo $RESULT
+ if [[ `echo $RESULT | egrep "WASX7262I|ADMU3000I" | wc -l` -eq 0 ]];
+ then
+  return 1
+ else
+  return 0
+ fi
+}
+
+#F02.06.02
+#Function : applicationserverstop, stop an application server on a specific node
+#Syntaxe  : applicationserverstop <APPSERVNAME> <NODENAME>
+#Return   : 0=OK,1=NOK
+#Notes    :
+applicationserverstop() {
+ #RESULT=`sowsadmin ${APIHOME}/scripts/jacl/stopserver.jacl ${1} ${2}` #VF02.06.01
+ #NODEPROFILENAME=`find $AS_PATH -name ${2} -type d | egrep -vi "dmgr|\/temp\/|\/backup\/|\/tranlog\/" | sed 's/\(.*\)profiles\(.*\)/\2/g' | egrep config | awk -F"/" '{ print $2 }'`
+ PATHPROFILE=`grep ":${2}:" ${APIHOME}/conf/wastab | grep ":${1}:" | awk -F":" '{ print $6 }'`
+ RESULT=`${PATHPROFILE}/bin/stopServer.sh ${1}`
+ if [[ `echo $RESULT | grep ADMU4000I | wc -l` -eq 0 ]];
+ then
+  return 1
+ else
+  return 0
+ fi
+}
+
+#F02.07.01
+#Function : clusterstart, start all cluster's application servers.
+#Syntaxe  : clusterstart <CELL> <APPSERVNAME>
+#Return   : 0=OK-allServerStart,1=NOK-noserverstarted,2=NOK-someServerNotStarted
+#Notes    :
+clusterstart() {
+ #Get all wastab entries except the comment
+ for i in `_listwastab`;
+ do
+  ### Set the appropriate var base on the wastab entries
+  _wastabentrie $i
+  RC=3 ###Set Return call to 3, until there, everythings is ok
+  ### If entry is active and it's on the good cell etc..
+  if [[ ${ACTIVE} == "Y" && ${CELL} == ${1} && ${AS} == ${2}* ]];
+  then
+   applicationserverstart ${AS} ${NODE} ### Call function F02.05.01
+   RCN=${?}
+   _setreturn $RC $RCN ### Call private function to set the appropriate Return Code
+   RC=$?
+  fi
+ done
+ ###Return 0,1 or 2
+ return $RC
+}
+
+#F02.08.01
+#Function : clusterstop, stop all cluster's application servers.
+#Syntaxe  : clusterstop <CELL> <APPSERVNAME>
+#Return   : 0=OK-allServerStoped,1=NOK-noserverStoped,2=NOK-someServerNotStoped
+#Notes    :
+clusterstop() {
+ #Get all wastab entries except the comment
+ for i in `_listwastab`;
+ do
+  ### Set the appropriate var base on the wastab entries
+  _wastabentrie $i
+  RC=3 ###Set Return call to 3, until there, everythings is ok
+  ### If entry is active and it's on the good cell etc..
+  if [[ ${ACTIVE} == "Y" && ${CELL} == ${1} && ${AS} == ${2}* ]];
+  then
+   applicationserverstop ${AS} ${NODE} ### Call function F02.06.01
+   _setreturn $RC $? ### Call private function to set the appropriate Return Code
+   RC=$?
+  fi
+ done
+ ###Return 0,1 or 2
+ return $RC
+}
+
+#F02.09.02
+#Function : sobackup, backup WAS config
+#Syntaxe  : sobackup <PROFILENAME>
+#Return   : 0=OK,1=NOK
+#Notes    : var BCK_PATH must be set in the waslib.conf
+#Version  : version 01 SO : base version
+#Version  : version 02 SO : Date format (: -> h/m/s)
+#	                    .zip added
+sobackup() {
+ _bckdate=`date +%y-%m-%d_%Hh%mm%Ss`-$$
+ ${AS_PATH}/bin/backupConfig.sh ${BCK_PATH}/${1}-${_bckdate}.zip -nostop -quiet -logfile ${BCK_PATH}/logs/WASbackup-${_bckdate}.log -profileName ${1}
+ return $?
+}
+
+#F02.10.01
+#Function : sorestore, restore WAS config
+#Syntaxe  : sorestore <PROFILENAME> <<BACKUP-FILE>>
+#Return   : 0=OK,1=NOK,2=backupFile doen't exist
+#Notes    : var BCK_PATH must be set in the waslib.conf
+#Notes    : Backup-file is optional, if not specified, the last backup will be use.
+sorestore() {
+ _restdate=`date +%y-%m-%d_%H:%m:%S`-$$
+ #If the backup-file is specified, use it, if not, use the last found in the BCK_PATH
+ if [[ -z $2 ]];
+ then
+  BCK_FILE=`ls -tr ${BCK_PATH}/${1}-* | tail -1`
+ else
+  #If the full path is specified in the first argument, do not use the BCK_PATH
+  if [[ `echo $2 | cut -b -1` == "/" ]]
+  then
+   BCK_FILE=${2}
+  else
+   BCK_FILE=${BCK_PATH}/${2}
+  fi
+ fi 
+ #Check if the file exist
+ if [[ ! -f $BCK_FILE ]];
+ then
+  echo "Error!, $BCK_FILE doen't exist."
+  return 2
+ fi
+ ${AS_PATH}/bin/restoreConfig.sh ${BCK_FILE} -nostop -quiet -logfile ${BCK_PATH}/logs/WASrestore-${_restdate}.log -profileName ${1}
+ return $?
+}
+
+#F02.14.02
+#Function : getappserverprocessid
+#Syntaxe  : getappserverprocessid <cellname> <nodename> <appservername>
+#Return   : by the stdout the pid of the application process
+#Notes    : the WAS_HOME must be set
+getappserverprocessid() {
+ if [[ -z $1 ]];
+ then
+  echo 0
+ fi
+ #PID=`ps auxwww | grep ${WAS_HOME} | egrep " ${1} ${2} ${3}" | grep -v grep | awk '{ print $2 }'`
+ PID=`ps auxwww | egrep " ${1} ${2} ${3}" | grep -v grep | awk '{ print $2 }'`
+ if [[ -z $PID ]];
+ then
+  echo 0
+ else
+  echo $PID
+ fi
+}
+
+#F02.15.01
+#Function : startserver, start an application server with the startServer.sh 
+#Syntaxe  : startserver <servername>
+#Return   : 0=started,1=errors
+#Notes    :
+startserver() {
+ ${AS_PATH}/bin/startServer.sh ${1}
+ return $?
+}
+
+#F02.16.01
+#Function : stopserver, stop an application server with the startServer.sh 
+#Syntaxe  : stopserver <servername>
+#Return   : 0=stoped,1=errors
+#Notes    :
+stopserver() {
+ ${AS_PATH}/bin/stopServer.sh ${1}
+ return $?
+}
+
+#F02.17.01
+#Function : startallAS, start all application server found active in the wastab
+#Syntaxe  : startallAS
+#Return   : 0=all srv started successfully,1=somes have been started and somes others not,2=no one have been started
+#Notes    :
+startallAS() {
+ unset RC
+ RC=3 ###Set Return call to 3, until there, everythings is ok
+ #Get all wastab entries except the comment
+ for i in `_listwastab | egrep -v "nodeagent|dmgr"`;
+ do
+  ### Set the appropriate var base on the wastab entries
+  _wastabentrie $i
+  ### If entry is active and it's on the good cell etc..
+  if [[ ${ACTIVE} == "Y" ]];
+  then
+   applicationserverstart ${AS} ${NODE} ### Call function F02.05.01
+   _setreturn $RC $? ### Call private function to set the appropriate Return Code
+   RC=$?
+  fi
+ done
+ ###Return 0,1 or 2
+ return $RC
+}
+
+#F02.18.01
+#Function : stopallAS, stop an application server found active in the wastab
+#Syntaxe  : stopallAS
+#Return   : 0=all srv stoped successfully,1=somes have been stoped and somes not,2=no one have been stoped,3=Internal error
+#Notes    :
+stopallAS() {
+#Get all wastab entries except the comment
+ unset ASPIDLIST ASPID
+ for i in `_listwastab`;
+ do
+  ### Set the appropriate var base on the wastab entries
+  _wastabentrie $i
+  ### If entry is active and it's on the good cell etc..
+  if [[ ${ACTIVE} == "Y" && $AS != "nodeagent" && $AS != "dmgr" ]];
+  then
+   ASPID=`getappserverprocessid ${CELL} ${NODE} ${AS}`
+   ASPIDLIST="${ASPIDLIST} ${ASPID}"
+   if [[ $ASPID -ne 0 ]];
+   then
+    killer $ASPID 20 &
+    applicationserverstop ${CELL} ${NODE} ${AS} ### Call function F02.06.01
+   fi
+  fi
+ done
+ for pid in ${ASPIDLIST};
+ do
+  ps $pid >> /dev/null 2>&1
+  if [[ ${?} -ne 0 ]];
+  then
+   return 1
+  fi
+ done
+ ###Return 0
+ return 0
+}
+
+#F02.20.01
+#Function : ihsstart, Start an IHS instance
+#Syntaxe  : ihsstart <instanceid*> *optional
+#Return   : 0=Ok, 1=Not OK
+#Notes    : It's based on apachectl script
+ihsstart() {
+ if [[ -z $1 ]];
+ then
+  $IHS_PATH/bin/apachectl start
+  return $?
+ else
+  $IHS_PATH/bin/apachectl${1} start
+  return $?
+ fi
+}
+
+#F02.21.01
+#Function : ihsstop, Stop an IHS instance
+#Syntaxe  : ihsstop <instanceid*> *optional
+#Return   : 0=Ok, 1=Not OK
+#Notes    : It's based on apachectl script
+ihsstop() {
+ if [[ -z $1 ]];
+ then
+  $IHS_PATH/bin/apachectl stop
+  return $?
+ else
+  $IHS_PATH/bin/apachectl${1} stop 
+  return $?
+ fi
+}
+
+#F02.22.01
+#Function : setJNDIvalue
+#Syntaxe  : setJNDIvalue <keyvalue> <newvalue>
+#Return   : 0=Ok, 1=Not OK
+setJNDIvalue() {
+ sowsadmin ${1} ${2}
+ return $?
+}
+
+#F02.23.01
+#Function : genepagentprop
+#Syntaxe  : genepagentprop
+#Return   : RC=allways 0, STDOUT=the expected result
+genepagentprop() {
+ nbrofentry=1
+ > ${APIHOME}/tmp/genepagentprop.lst
+ > ${APIHOME}/tmp/genepagentprop.lst2
+ for wastabline in `egrep -v "^#|:dmgr:|:nodeagent:" ${APIHOME}/conf/wastab`
+ do
+  profilepath=`echo $wastabline | awk -F":" '{ print $6 }'`
+  servername=`echo $wastabline | awk -F":" '{ print $3 }'`
+  echo "introscope.epagent.stateful.GCWatch${nbrofentry}.class=GCWatchIBM142 ${profilepath}/logs/${servername}/native_stderr.log" >> ${APIHOME}/tmp/genepagentprop.lst
+  let nbrofentry=${nbrofentry}+1
+ done
+ cnt=1
+ firstline="introscope.epagent.plugins.stateful.names=APACHE1"
+ while [[ $cnt -lt $nbrofentry ]]
+ do
+  firstline="${firstline=},GCWatch${cnt}" 
+  let cnt=${cnt}+1
+ done
+ echo $firstline > ${APIHOME}/tmp/genepagentprop.lst2
+ echo "introscope.epagent.stateful.APACHE1.command=perl /opt/Introscope/agent/wily/epagent/epaplugins/apache/apacheLogReader.pl" >>${APIHOME}/tmp/genepagentprop.lst2
+ cat ${APIHOME}/tmp/genepagentprop.lst2
+ cat ${APIHOME}/tmp/genepagentprop.lst 
+}
+
+##
+# private function
+#Syntax : _setreturn <PREVIOUS RC> <NEW RC>
+_setreturn() {
+ if [[ $1 -eq 1 && $2 -eq 0 ]];
+ then
+  return 2
+ fi
+ if [[ $1 -eq 1 && $2 -eq 1 ]];
+ then
+  return 1
+ fi
+ if [[ $1 -eq 0 && $2 -eq 0 ]];
+ then
+  return 0
+ fi
+ if [[ $1 -eq 3 && $2 -eq 0 ]];
+ then
+  return 0
+ fi
+ if [[ $1 -eq 3 && $2 -eq 1 ]];
+ then
+  return 1
+ fi
+ if [[ $1 -eq 2 ]];
+ then
+  return 2
+ fi
+}
+
+_wastabentrie() {
+  CELL=`echo $1 | awk -F":" '{ print $1 }'`
+  NODE=`echo $1 | awk -F":" '{ print $2 }'`
+  AS=`echo $1 | awk -F":" '{ print $3 }'`
+  ACTIVE=`echo $1 | awk -F":" '{ print $4 }'`
+  NODEPROFILENAME=`echo $1 | awk -F":" '{ print $5 }'`
+  PATHPROFILE=`echo $1 | awk -F":" '{ print $6 }'`
+}
+
+_listwastab() {
+ cat ${APIHOME}/conf/wastab | egrep -v "^#"
+}
+
+#F02.0x.01
+#Function :
+#Syntaxe  :
+#Return   :
+#Notes    :
+

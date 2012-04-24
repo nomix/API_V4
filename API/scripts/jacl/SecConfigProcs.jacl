@@ -1,0 +1,3138 @@
+##  @(#) EuroClear WebSphere.security, WAS602
+##  wsadmin.sh -profile  <Directory>/SecConfigProcs.jacl  -f <Directory>/SecConfigBatch.jacl <Directory>/SecConfig.properties
+##----------------------------------------------------------------------
+## 
+## This sample provides sample scripts to configure  
+## WebSphere Application Server security
+
+
+proc loadProperties {propFileName} {
+	java::import java.io.FileInputStream
+	java::import java.util.Properties
+	
+	set fileprop [java::new Properties]
+	set fileStream [java::new FileInputStream $propFileName]
+	
+	$fileprop load $fileStream
+	return $fileprop
+}
+  
+
+######################################################################################################
+#
+#  getSecurityAdminMbean
+#	Procedure to get securityAdmin Mbean.
+#
+######################################################################################################
+
+proc getSecurityAdminMbean {} {
+	global AdminControl
+	
+	if {[catch {$AdminControl queryNames WebSphere:type=SecurityAdmin,*} result]} {
+		puts stdout "\$AdminControl queryNames WebSphere:type=SecurityAdmin,* caught an exception $result\n"
+		return 
+	} else {
+		if {$result != {}} {
+			# incase more than one, just get the first one
+			set secMbean [lindex $result 0]
+			return $secMbean
+		} else {
+			puts stdout "Security Mbean was not found\n"
+			return
+		}
+	}
+}
+
+######################################################################################################
+#
+#  enableSecurity 
+#	Procedure to set enable security interactively
+#
+######################################################################################################
+
+proc enableSecurity {} {
+	global interactiveFlag inputauthmech LTPAPassword SSODomainName userid password inputUR LDAPServerType
+	global LDAPServerId LDAPPort LDAPBaseDN AdminConfig security_item  
+	set interactive false
+	#set interactiveFlag [$props getProperty interactive]
+	
+	puts stdout "Please enter authentication mechanism: LTPA|SWAM"
+	set inputauthmech [gets stdin]
+	
+	if {[regexp $inputauthmech "LTPA"]} {
+		puts stdout "Please enter LTPA password"
+		set LTPAPassword [gets stdin]
+		puts stdout "Password to be set $LTPAPassword"
+		puts stdout "Please enter your SSO domain name"
+		set SSODomainName [gets stdin]
+		setLTPAConfig $LTPAPassword
+		puts stdout "sso domain name is $SSODomainName"
+		setSSO [list [list domainName $SSODomainName]]
+	} elseif {[regexp $inputauthmech "SWAM"]} {
+	} else {
+		error "invalid authentication mechanism"
+	}
+	
+	setAuthMech $inputauthmech
+	
+	puts stdout "Please enter user registry type: LDAP|LocalOS|CUSTOM"
+	set inputUR [gets stdin]
+	
+	setActiveUserRegistry $inputUR
+	
+	if {[regexp $inputUR "LDAP"]} {
+		puts stdout "Please enter your serverID"
+		set userid [gets stdin]
+		puts stdout "Please enter your server Password"
+		set password [gets stdin]
+		puts stdout "Please enter your directory type:  IBM_DIRECTORY_SERVER   SECUREWAY   IPLANET   NETSCAPE   DOMINO502   NDS   ACTIVE_DIRECTORY   CUSTOM"
+		set LDAPServerType [gets stdin]
+		puts stdout "Please enter your LDAP host"
+		set LDAPServerId [gets stdin]
+		puts stdout "Please enter your LDAP port"
+		set LDAPPort [gets stdin]
+		puts stdout "Please enter your BaseDN"
+		set LDAPBaseDN [gets stdin]
+		set attrs [list [list serverId $userid] [list serverPassword $password] [list realm $LDAPServerId:$LDAPPort] [list type $LDAPServerType] [list baseDN $LDAPBaseDN] [list reuseConnection true] [list hosts [list [list [list host $LDAPServerId] [list port $LDAPPort]]]]]
+		setLDAPUserRegistry $attrs
+		updateLDAPFilter $LDAPServerType
+	} elseif {[regexp $inputUR "LocalOS"]} {
+		puts stdout "Please enter your userName:"
+		set userid  [gets stdin]
+		puts stdout "Please enter your password:"
+		set password [gets stdin]
+		setLocalOSUserRegistry $userid $password
+	} elseif {[regexp $inputUR "CUSTOM]} {
+		puts stdout "do something"
+	}
+	$AdminConfig modify $security_item [list [list enabled "true"]]
+		
+	saveConfig 
+}
+
+######################################################################################################
+#
+#  setSecurityEnable 
+#	Procedure to set enable/disable flag.  Takes enable/disable as input parameter.
+#
+######################################################################################################
+
+proc setSecurityEnable {enableFlag} {
+	global AdminConfig security_item
+	if {[regexp $enableFlag enable]} {
+		$AdminConfig modify $security_item [list [list enabled "enable"]] 
+	}
+	
+	if {[regexp $enableFlag disable]} { 
+		$AdminConfig modify $security_item [list [list enabled "disable"]]
+	}
+
+	if {[regexp $enableFlag null]} {
+		puts "Wrong parameter, use enable / disable"
+		return
+	}
+}
+
+######################################################################################################
+#
+#  validation
+#	Procedure to validate security settings.  security cache timeout needs to be greater than 30
+#	sec. Username and password needs to be set.  LTPA password needs to be set if LTPA is used.
+#
+######################################################################################################
+
+proc validation {} {
+	global AdminConfig ldapUserRegistryId
+	
+	set security_item [$AdminConfig list Security]
+	set userregistry [lindex [lindex [$AdminConfig show $security_item activeUserRegistry] 0] 1]
+		
+	# validate cachetimeout.  This value should not be null and should > 30 
+	set cachetimeout [$AdminConfig showAttribute $security_item cacheTimeout]
+	puts stdout "cachetimeout value is $cachetimeout"
+	if {$cachetimeout == "" || $cachetimeout < 30} {
+		error {Please enter cache timeout value > 30}
+	}
+	puts stdout {cachetimeout value is ok}
+	
+	set activeauthmech [$AdminConfig showAttribute $security_item activeAuthMechanism]
+	puts stdout "Active Authentication Mechanism is $activeauthmech"
+	
+	set activeuserreg [$AdminConfig showAttribute $security_item activeUserRegistry]
+	puts stdout "Active User Registry is $activeuserreg"
+					       
+	set userid [$AdminConfig showAttribute $userregistry serverId]
+	set password [$AdminConfig showAttribute $userregistry serverPassword]
+	
+	if {$userid == "" || $password == ""} {
+		puts stdout "Uid/Pw is null.  Please enter valid Uid and PW"
+		set setUidPwResult [setUidPw]
+        
+		if {$setUidPwResult} {
+			$AdminConfig modify $security_item [list [list enabled $value]]
+			return true
+		} else {
+			return false
+		}
+	}   
+	if {[regexp LTPA [$AdminConfig showAttribute $security_item activeAuthMechanism]]} {
+		puts stdout "Authmech is LTPA"
+		set LTPA [$AdminConfig list LTPA]
+		if {[$AdminConfig showAttribute $LTPA password] == {}} {
+			puts stdout "AuthMechanism is LTPA.  Please config LTPA"
+			return false 
+		}
+	}
+	
+	set LDAPDirType [$AdminConfig showAttribute $ldapUserRegistryId type]
+	puts stdout "LDAP User Registry type is $LDAPDirType"
+	puts stdout "IgnoreCase is [$AdminConfig showAttribute $ldapUserRegistryId ignoreCase]"
+	if {$LDAPDirType == "IBM_DIRECTORY_SERVER"} {
+		puts stdout "LDAP Directory type is IBM_DIRECTORY_SERVER"
+        
+		if {[$AdminConfig showAttribute $ldapUserRegistryId ignoreCase] == "false"} {
+			puts stdout "The LDAP directory server requires Ignore Case to be selected. Please enable Ignore Case and retry.\n"
+			return false
+		}
+	}
+
+	return true
+}
+
+proc setGlobalSecurity {attrib} {
+	global AdminConfig security_item
+	if {[catch {$AdminConfig modify $security_item $attrib} result]} {
+		puts stdout "\$AdminConfig modify $security_item $attrib caught an exception $result\n"
+		return
+	} else {
+		puts stdout "Done setting up attributes values for global security"
+	}
+}
+	      
+proc setUidPw {userid password} {
+	if {[checkuserpw $userid $password]} {
+		$AdminConfig modify $userregistry [list [list serverId $userid]]
+		$AdminConfig modify $userregistry [list [list serverPassword $password]]
+		return true
+	} else {
+		puts stdout "Userid/Password is not correct"
+		return false
+	}
+}
+
+proc setAuthMech {inputauthmech} {
+	global security_item AdminConfig
+	
+	set authmechs [lindex [lindex [$AdminConfig show $security_item authMechanisms] 0] 1]
+	set found 0
+	
+	foreach authmech $authmechs {
+		puts stdout "inputauthmech is $inputauthmech ####### authmech is $authmech"
+		if {[regexp $inputauthmech $authmech]} {
+			set found 1			
+			puts stdout "setting the authentication mechanism to $authmech"
+			$AdminConfig modify $security_item [list [list activeAuthMechanism $authmech]]
+			break
+		}
+	}	
+	if {$found == 0} {
+		puts "Cannot find authentication mechanism specified"
+	}
+}
+
+proc setActiveUserRegistry {inputUR} {
+	global security_item AdminConfig
+	
+	set urs [lindex [lindex [$AdminConfig show $security_item userRegistries] 0] 1]
+	set found 0
+	
+	foreach ur $urs {
+		if {[regexp $inputUR $ur]} {
+			set found 1
+			$AdminConfig modify $security_item [list [list activeUserRegistry $ur]]
+			break
+		}
+	}	
+	if {$found == 0} {
+		puts "Cannot find authentication mechanism specified"
+	}
+}
+
+proc setLTPAConfig {ltpaPw} {
+	global AdminConfig privateKey publicKey sharedKey LTPA
+	
+	$AdminConfig modify $LTPA [list [list password $ltpaPw]]
+	
+	generateLTPAKeys $ltpaPw
+	exportLTPAKey
+	set Attrs1 [list [list password $ltpaPw] [list private [list [list byteArray $privateKey]]] [list public [list [list byteArray $publicKey]]] [list shared [list [list byteArray $sharedKey]]]]
+	$AdminConfig modify $LTPA $Attrs1
+}
+
+proc generateLTPAKeys {ltpaPasw} {
+	global AdminControl
+	
+	set secMbean [getSecurityAdminMbean]
+	if {$secMbean != {} || $secMbean != "null"} {
+		if {[catch {$AdminControl invoke $secMbean generateKeys $ltpaPasw} result]} {
+			puts stdout "\$AdminControl invoke $secMbean generateKeys $ltpaPasw caught an exception $result\n"
+			return 
+		} else {
+			puts stdout "LTPA keys was generated\n"
+		}
+	} else {
+		puts stdout "unable to get securityAdmin Mbean, LTPA key not generated"
+	}
+}
+
+proc importKeys {filename} {
+	global AdminControl AdminConfig LTPA privateKey publicKey sharedKey
+	
+	set props [loadProperties $filename]
+	
+	set privateKey [$props getProperty com.ibm.websphere.ltpa.PrivateKey]
+	set publicKey [$props getProperty com.ibm.websphere.ltpa.PublicKey]
+	set sharedKey [$props getProperty com.ibm.websphere.ltpa.3DESKey]
+	set attrib [list [list private [list [list byteArray $privateKey]]] [list public [list [list byteArray $publicKey]]] [list shared [list [list byteArray $sharedKey]]]]
+	$AdminConfig modify $LTPA $attrib
+}
+
+proc exportKeys {filename} {
+	global AdminControl privateKey publicKey sharedKey
+	set secMbean [getSecurityAdminMbean] 
+	set filestream [java::new java.io.FileOutputStream $filename]
+	set prop [$AdminControl invoke $secMbean exportLTPAKeys]
+	set pwriter [java::new java.io.PrintWriter $filestream]
+	foreach entry $prop {
+		$pwriter println "[lindex $entry 0]=[lindex $entry 1]"
+	}       
+	$pwriter flush
+}
+
+proc exportLTPAKey {} {
+	global AdminControl privateKey publicKey sharedKey
+	
+	set secMbean [getSecurityAdminMbean] 
+	if {$secMbean != {} || $secMbean != "null"} {
+		if {[catch {$AdminControl invoke $secMbean exportLTPAKeys} result]} {
+			puts stdout "\$AdminControl invoke $secMbean exportLTPAKeys caught an exception $result\n"
+			return 
+		} else {
+			if {$result != {}} {
+				# get shared key value
+                                for {set x 0} {$x<7} {incr x} {
+                                        set key [lindex [lindex $result $x] 0]
+                                        set value [lindex [lindex $result $x] 1]
+                                        
+                                        if {[string compare $key com.ibm.websphere.ltpa.3DESKey] == 0} {
+                                                set sharedKey $value
+                        		} elseif {[string compare $key com.ibm.websphere.ltpa.PrivateKey] == 0} {
+                                                set privateKey $value
+                        		} elseif {[string compare $key com.ibm.websphere.ltpa.PublicKey] == 0} {
+                                                set publicKey $value
+                                        }
+                                }
+                                #puts stdout "$result\n"
+				#puts stdout "ExportLTPAKeys return"
+				#puts stdout "$result\n"
+				#puts stdout "Got the shared key is $sharedKey\n"
+				#puts stdout "Got the private key is $privateKey\n"
+				#puts stdout "Got the public key is $publicKey\n"
+				puts stdout "public, private, and shared keys exported\n"
+			} else {
+				puts stdout "ExportLTPAKeys return empty string\n"
+			}
+		}
+	}
+}
+
+proc setSSO {attrib} {
+	global AdminConfig SSO
+	$AdminConfig modify $SSO $attrib
+}
+
+proc setLocalOSUserRegistry {userid password} {
+	global AdminConfig AdminControl userRegistry security_item
+
+	set activeuserRegistry [$AdminConfig showAttribute $security_item activeUserRegistry]
+	set secMbean [getSecurityAdminMbean]
+	$AdminConfig modify $activeuserRegistry [list [list serverId $userid]]
+	$AdminConfig modify $activeuserRegistry [list [list serverPassword $password]]
+	$AdminConfig modify $activeuserRegistry [list [list realm [$AdminControl invoke $secMbean getRealm null]]]
+	return true
+}
+
+proc revokeUser {realm userid} {
+	global AdminControl AdminConfig
+	
+        if {[catch {$AdminControl queryNames WebSphere:type=SecurityAdmin,*} result]} {
+		puts stdout "\$AdminControl queryNames WebSphere:type=SecurityAdmin,* caught an exception $result\n"
+		return 
+	} else {
+		if {$result != {}} {
+	                foreach secBean $result {
+	                        if {$secBean != {} || $secBean != "null"} {
+		                        if {[catch {$AdminControl invoke $secBean purgeUserFromAuthCache "$realm $userid"} result]} {
+			                        puts stdout "\$AdminControl invoke $secBean purgeUserFromAuthCache $realm $userid caught an exception $result\n"
+			                        return 
+		                        } else {
+			                        puts stdout "\nUser $userid has been purged from the cache of process $secBean\n"
+                		        }
+	                        } else {
+		                        puts stdout "unable to get securityAdmin Mbean, user $userid not revoked"
+	                        }
+                        }	
+		} else {
+			puts stdout "Security Mbean was not found\n"
+			return
+		}
+	}
+        
+
+	return true
+}
+
+
+proc setLDAPUserRegistry {Attrs2} {
+	global AdminConfig ldapUserRegistryId
+	
+	if {$ldapUserRegistryId != "null" || $ldapUserRegistryId != {}} {
+		# do this first to make sure not other host or port in security.xml
+		# otherwise it will failed to start the server after security on
+		set temp [catch {$AdminConfig showAttribute $ldapUserRegistryId hosts} hostIdList]
+		if {$hostIdList != {}} {
+			foreach hostId $hostIdList {
+				set temp [catch {$AdminConfig remove $hostId} result]
+				puts stdout "Removed hostId $hostId\n"
+				set temp [catch {$AdminConfig save} saveResult]
+				puts stdout "Saved the change\n"
+			}
+		}
+		if {[catch {$AdminConfig modify $ldapUserRegistryId $Attrs2} result]} {
+			puts stdout "\$AdminConfig modify $ldapUserRegistryId $Attrs2 caught an exception $result\n"
+			return
+		} else {
+                        if {[string match [validateLDAPUserRegistry] false]} {
+		                # if validation fails, put host entry back
+                                set temp [catch {$AdminConfig showAttribute $ldapUserRegistryId hosts} hostIdList]
+		                if {$hostIdList != {}} {
+			                foreach hostId $hostIdList {
+				                set temp [catch {$AdminConfig modify $hostId} result]
+                                                set temp [catch {$AdminConfig save} saveResult]
+			                }
+		                }
+			}
+                        puts stdout "LDAP configured"
+		}
+	} else {
+		puts stdout "LDAPUserRegistry ConfigId was not found\n"
+	}
+}
+
+######################################################################################################
+#
+#  updateLDAPFilter
+#	Procedure to set the advanced LDAP filters.  Takes LDAP server type as input parameter and 
+#       loads the pre-configured LDAP filter setting from 
+#	com/ibm/ws/security/common/util/LdapConfig.properties from <<WAS_HOME>>/lib/wssec.jar
+#
+######################################################################################################
+ 
+proc updateLDAPFilter {LDAPType} {
+	global env
+	java::import java.util.Properties;
+	java::import java.util.jar.JarInputStream;
+	java::import java.util.jar.JarEntry;
+	java::import java.io.FileInputStream;
+	
+	set attrib {}
+	set jarFile [java::new FileInputStream "$env(was.install.root)/lib/wssec.jar"]
+	set jarIS [java::new JarInputStream $jarFile]
+	
+	#set entry [$jarIS getNextJarEntry]
+	while {[set entry [$jarIS getNextJarEntry]] != {}} {
+		if {[string match [$entry getName] com/ibm/ws/security/common/util/LdapConfig.properties]} {
+			set prop [java::new Properties]
+			$prop load  $jarIS
+			switch -exact -- $LDAPType {
+				IBM_DIRECTORY_SERVER {
+					lappend attrib [list userFilter [$prop getProperty ibm_dir_server.user.filter]]
+					lappend attrib [list groupFilter [$prop getProperty ibm_dir_server.group.filter]]
+					lappend attrib [list userIdMap [$prop getProperty ibm_dir_server.user.idmap]]
+					lappend attrib [list groupIdMap [$prop getProperty ibm_dir_server.group.idmap]]
+					lappend attrib [list groupMemberIdMap [$prop getProperty ibm_dir_server.groupmember.idmap]]
+				}
+				SECUREWAY {
+					lappend attrib [list userFilter [$prop getProperty secureway.user.filter]]
+					lappend attrib [list groupFilter [$prop getProperty secureway.group.filter]]
+					lappend attrib [list userIdMap [$prop getProperty secureway.user.idmap]]
+					lappend attrib [list groupIdMap [$prop getProperty secureway.group.idmap]]
+					lappend attrib [list groupMemberIdMap [$prop getProperty secureway.groupmember.idmap]]
+				}
+				IPLANET {
+					lappend attrib [list userFilter [$prop getProperty iplanet.user.filter]]
+					lappend attrib [list groupFilter [$prop getProperty iplanet.group.filter]]
+					lappend attrib [list userIdMap [$prop getProperty iplanet.user.idmap]]
+					lappend attrib [list groupIdMap [$prop getProperty iplanet.group.idmap]]
+					lappend attrib [list groupMemberIdMap [$prop getProperty iplanet.groupmember.idmap]]
+				}
+				NETSCAPE {
+					lappend attrib [list userFilter [$prop getProperty netscape.user.filter]]
+					lappend attrib [list groupFilter [$prop getProperty netscape.group.filter]]
+					lappend attrib [list userIdMap [$prop getProperty netscape.user.idmap]]
+					lappend attrib [list groupIdMap [$prop getProperty netscape.group.idmap]]
+					lappend attrib [list groupMemberIdMap [$prop getProperty netscape.groupmember.idmap]]
+					
+				}
+				DOMINO502 {
+					lappend attrib [list userFilter [$prop getProperty domino50.user.filter]]
+					lappend attrib [list groupFilter [$prop getProperty domino50.group.filter]]
+					lappend attrib [list userIdMap [$prop getProperty domino50.user.idmap]]
+					lappend attrib [list groupIdMap [$prop getProperty domino50.group.idmap]]
+					lappend attrib [list groupMemberIdMap [$prop getProperty domino50.groupmember.idmap]]
+				}
+                                ACTIVE_DIRECTORY {
+					lappend attrib [list userFilter [$prop getProperty actived.user.filter]]
+					lappend attrib [list groupFilter [$prop getProperty actived.group.filter]]
+					lappend attrib [list userIdMap [$prop getProperty actived.user.idmap]]
+					lappend attrib [list groupIdMap [$prop getProperty actived.group.idmap]]
+					lappend attrib [list groupMemberIdMap [$prop getProperty actived.groupmember.idmap]]
+				}
+				CUSTOM {}
+			}
+			setLDAPFilter $attrib 
+			$jarIS closeEntry
+			break
+		}
+		$jarIS closeEntry
+	}
+	$jarIS close
+}
+
+proc setLDAPFilter {attrib} {
+	global AdminConfig ldapSearchFilter
+	 
+	$AdminConfig modify $ldapSearchFilter $attrib
+}
+
+proc setCustomUserRegistry {attrib} {
+	global AdminConfig cusUserRegistry
+	
+	$AdminConfig modify $cusUserRegistry $attrib
+	return true
+}
+
+proc readEnvVariable {} {
+        global env
+        set maxl 0
+        
+        set args [lsort [array names env]]
+        puts stdout "args is $args"
+        foreach x $args {
+           if {[string length $x] > $maxl } {
+              set maxl [string length $x]
+           }
+        }
+        incr maxl 2
+        foreach x $args {
+           puts stdout [format "%*s = %s" $maxl $x $env($x)]
+        }
+}
+
+######################################################################################################
+#
+#	For CSI properties, there are Never/Support/Require choices, and their relationship with qop
+#   	are as follows:
+#
+#       	Never		Support		Require
+#       ----------------------------------------------------
+#       s_qop	 false          true            false
+#	r_qop	 false		false	        true
+#
+######################################################################################################
+
+proc setCSIia {attrib} {
+	global AdminConfig
+	
+	set mlayer [$AdminConfig list MessageLayer]
+	set tlayer [$AdminConfig list TransportLayer]
+	set ilayer [$AdminConfig list IdentityAssertionLayer]
+	set claims [$AdminConfig list SecurityProtocolConfig] 
+	set s_mqop [$AdminConfig showAttribute [lindex $mlayer 0] supportedQOP]
+	set r_mqop [$AdminConfig showAttribute [lindex $mlayer 0] requiredQOP]
+	set s_tqop [$AdminConfig showAttribute [lindex $tlayer 0] supportedQOP]
+	set r_tqop [$AdminConfig showAttribute [lindex $tlayer 0] requiredQOP]
+	set i_qop [$AdminConfig showAttribute [lindex $ilayer 0] supportedQOP]
+	
+	set property [lsearch -exact $attrib "BasicAuth"]
+	if {$property >= 0} {
+		set value [lindex $attrib [incr property]]
+		if {[string compare $value Never] == 0} {
+			$AdminConfig modify $s_mqop [list [list establishTrustInClient false]]
+			$AdminConfig modify $r_mqop [list [list establishTrustInClient false]]
+		} elseif {[string compare $value Supported] == 0} {
+			$AdminConfig modify $s_mqop [list [list establishTrustInClient true]]
+			$AdminConfig modify $r_mqop [list [list establishTrustInClient false]]
+		} else  {
+			$AdminConfig modify $s_mqop [list [list establishTrustInClient false]]
+			$AdminConfig modify $r_mqop [list [list establishTrustInClient true]]
+		} 
+	}
+	
+	set property [lsearch -exact $attrib "ClientCert"]
+	if {$property >= 0} {
+		set value [lindex $attrib [incr property]]
+		if {[string compare $value Never] == 0} {
+			$AdminConfig modify $s_tqop [list [list establishTrustInClient false]]
+			$AdminConfig modify $r_tqop [list [list establishTrustInClient false]]
+		} elseif {[string compare $value Supported] == 0} {
+			$AdminConfig modify $s_tqop [list [list establishTrustInClient true]]
+			$AdminConfig modify $r_tqop [list [list establishTrustInClient false]]
+		} else  {
+			$AdminConfig modify $s_tqop [list [list establishTrustInClient false]]
+			$AdminConfig modify $r_tqop [list [list establishTrustInClient true]]
+		} 
+	}
+	
+	set property [lsearch -exact $attrib "IdentityAssertion"]
+	if {$property >= 0} {
+		set value [lindex $attrib [incr property]]
+		if {[string compare $value true] == 0} {
+			$AdminConfig modify $i_qop [list [list enable true]]
+		} else {
+			$AdminConfig modify $i_qop [list [list enable false]]
+		}
+	}
+
+	set property [lsearch -exact $attrib "TrustedServers"]
+	if {$property >= 0} {
+		set value [lindex $attrib [incr property]]
+		set trustserverlist [split $value ,]
+		
+		for {set i 0} {$i < [llength $trustserverlist]} {incr i} {
+			set trustserver [lindex $trustserverlist $i]
+			$AdminConfig create ServerIdentity [lindex $ilayer 0] [list [list serverId $trustserver]]
+		}
+	}
+	
+	set property [lsearch -exact $attrib "isStateful"]
+	if {$property >= 0} {
+		set value [lindex $attrib [incr property]]
+		if {[string compare $value true] == 0 } {
+			$AdminConfig modify [lindex $claims 0] [list [list stateful true]]
+		} else  {
+			$AdminConfig modify [lindex $claims 0] [list [list stateful false]]
+		}
+	}
+}
+
+proc setCSIoa {attrib} {
+	global AdminConfig
+	
+	set mlayer [$AdminConfig list MessageLayer]
+	set tlayer [$AdminConfig list TransportLayer]
+	set ilayer [$AdminConfig list IdentityAssertionLayer]
+	set claims [$AdminConfig list SecurityProtocolConfig] 
+	set s_mqop [$AdminConfig showAttribute [lindex $mlayer 1] supportedQOP]
+	set r_mqop [$AdminConfig showAttribute [lindex $mlayer 1] requiredQOP]
+	set s_tqop [$AdminConfig showAttribute [lindex $tlayer 1] supportedQOP]
+	set r_tqop [$AdminConfig showAttribute [lindex $tlayer 1] requiredQOP]
+	set i_qop [$AdminConfig showAttribute [lindex $ilayer 1] supportedQOP]
+	
+	set property [lsearch -exact $attrib "BasicAuth"]
+	if {$property >= 0} {
+		set value [lindex $attrib [incr property]]
+		if {[string compare $value Never] == 0} {
+			$AdminConfig modify $s_mqop [list [list establishTrustInClient false]]
+			$AdminConfig modify $r_mqop [list [list establishTrustInClient false]]
+		} elseif {[string compare $value Supported] == 0} {
+			$AdminConfig modify $s_mqop [list [list establishTrustInClient true]]
+			$AdminConfig modify $r_mqop [list [list establishTrustInClient false]]
+		} else  {
+			$AdminConfig modify $s_mqop [list [list establishTrustInClient false]]
+			$AdminConfig modify $r_mqop [list [list establishTrustInClient true]]
+		} 
+	}
+	
+	set property [lsearch -exact $attrib "ClientCert"]
+	if {$property >= 0} {
+		set value [lindex $attrib [incr property]]
+		if {[string compare $value Never] == 0} {
+			$AdminConfig modify $s_tqop [list [list establishTrustInClient false]]
+			$AdminConfig modify $r_tqop [list [list establishTrustInClient false]]
+		} elseif {[string compare $value Supported] == 0} {
+			$AdminConfig modify $s_tqop [list [list establishTrustInClient true]]
+			$AdminConfig modify $r_tqop [list [list establishTrustInClient false]]
+		} else  {
+			$AdminConfig modify $s_tqop [list [list establishTrustInClient false]]
+			$AdminConfig modify $r_tqop [list [list establishTrustInClient true]]
+		} 
+	}
+	
+	set property [lsearch -exact $attrib "IdentityAssertion"]
+	if {$property >= 0} {
+		set value [lindex $attrib [incr property]]
+		if {[string compare $value true] == 0} {
+			$AdminConfig modify $i_qop [list [list enable true]]
+		} else {
+			$AdminConfig modify $i_qop [list [list enable false]]
+		}
+	}
+
+	set property [lsearch -exact $attrib "isStateful"]
+	if {$property >= 0} {
+		set value [lindex $attrib [incr property]]
+		if {[string compare $value true] == 0 } {
+			$AdminConfig modify [lindex $claims 0] [list [list stateful true]]
+		} else  {
+			$AdminConfig modify [lindex $claims 0] [list [list stateful false]]
+		}
+	}
+}
+
+proc setCSIic {attrib} {
+	global AdminConfig
+	
+	set tlayer [$AdminConfig list TransportLayer]
+	set claims [$AdminConfig list SecurityProtocolConfig] 
+	set s_tqop [$AdminConfig showAttribute [lindex $tlayer 0] supportedQOP]
+	set r_tqop [$AdminConfig showAttribute [lindex $tlayer 0] requiredQOP]
+	set iiopTransport [$AdminConfig showAttribute [lindex $tlayer 0] serverAuthentication]
+	
+	set property [lsearch -exact $attrib "Transport"]
+	if {$property >= 0} {
+		set value [lindex $attrib [incr property]]
+		if {[string compare $value TCPIP] == 0} {
+			$AdminConfig modify $s_tqop [list [list enableProtection false]]
+			$AdminConfig modify $r_tqop [list [list enableProtection false]]
+		} elseif {[string compare $value SSL-Supported] == 0} {
+			$AdminConfig modify $s_tqop [list [list enableProtection true]]
+			$AdminConfig modify $r_tqop [list [list enableProtection false]]
+		} else  {
+			$AdminConfig modify $s_tqop [list [list enableProtection false]]
+			$AdminConfig modify $r_tqop [list [list enableProtection true]]
+		} 
+	}
+	
+	set property [lsearch -exact $attrib "SSLSetting"]
+	if {$property >= 0} {
+		set value [lindex $attrib [incr property]]
+		$AdminConfig modify $iiopTransport [list [list sslConfig $value]]
+	}
+}
+
+proc setCSIoc {attrib} {
+	global AdminConfig
+	
+	set tlayer [$AdminConfig list TransportLayer]
+	set claims [$AdminConfig list SecurityProtocolConfig] 
+	set s_tqop [$AdminConfig showAttribute [lindex $tlayer 1] supportedQOP]
+	set r_tqop [$AdminConfig showAttribute [lindex $tlayer 1] requiredQOP]
+	set iiopTransport [$AdminConfig showAttribute [lindex $tlayer 1] serverAuthentication]
+	
+	set property [lsearch -exact $attrib "Transport"]
+	if {$property >= 0} {
+		set value [lindex $attrib [incr property]]
+		if {[string compare $value TCPIP] == 0} {
+			$AdminConfig modify $s_tqop [list [list enableProtection false]]
+			$AdminConfig modify $r_tqop [list [list enableProtection false]]
+		} elseif {[string compare $value SSL-Supported] == 0} {
+			$AdminConfig modify $s_tqop [list [list enableProtection true]]
+			$AdminConfig modify $r_tqop [list [list enableProtection false]]
+		} else  {
+			$AdminConfig modify $s_tqop [list [list enableProtection false]]
+			$AdminConfig modify $r_tqop [list [list enableProtection true]]
+		} 
+	}
+	
+	set property [lsearch -exact $attrib "SSLSetting"]
+	if {$property >= 0} {
+		set value [lindex $attrib [incr property]]
+		$AdminConfig modify $iiopTransport [list [list sslConfig $value]]
+	}
+}
+
+proc setSASic {attrib} {
+	global AdminConfig
+	
+	set tlayer [$AdminConfig list TransportLayer]
+	set iiopTransport [$AdminConfig showAttribute [lindex $tlayer 2] serverAuthentication]
+	
+	set property [lsearch -exact $attrib "SSLSetting"]
+	if {$property >= 0} {
+		set value [lindex $attrib [incr property]]
+		$AdminConfig modify $iiopTransport [list [list sslConfig $value]]
+	}
+}
+
+proc setSASoc {attrib} {
+	global AdminConfig
+	
+	set tlayer [$AdminConfig list TransportLayer]
+	set iiopTransport [$AdminConfig showAttribute [lindex $tlayer 3] serverAuthentication]
+	
+	set property [lsearch -exact $attrib "SSLSetting"]
+	if {$property >= 0} {
+		set value [lindex $attrib [incr property]]
+		$AdminConfig modify $iiopTransport [list [list sslConfig $value]]
+	}
+}
+
+######################################################################################################
+#
+#	Following methods will take an attribute and return the value associated with the attribute
+#
+######################################################################################################
+
+proc getSecurityAttributes {attrib} {
+	global AdminConfig
+	
+	set security_item [$AdminConfig list Security]
+	return [$AdminConfig showAttribute $security_item $attrib]
+}
+
+proc getRealm {} {
+	global AdminControl
+        set secMbean [getSecurityAdminMbean]
+	return [$AdminControl invoke $secMbean getRealm null]
+}
+
+proc getLTPAAttributes {attrib} {
+	global AdminConfig
+	
+	set LTPA [$AdminConfig list LTPA]
+	return [$AdminConfig showAttribute $LTPA $attrib]
+}
+
+proc getSSOAttributes {attrib} {
+	global AdminConfig
+	
+	set SSO [$AdminConfig list SingleSignon]
+	return [$AdminConfig showAttribute $SSO $attrib]
+}
+
+proc getUserRegistryAttributes {attrib} {
+	global AdminConfig
+	
+	set userRegistry [$AdminConfig list UserRegistry]
+	return [$AdminConfig showAttribute $userRegistry $attrib]
+}
+
+proc getLDAPUserRegistryAttributes {attrib} {
+	global AdminConfig
+	
+	set ldapUserRegistryId [$AdminConfig list LDAPUserRegistry]
+	return [$AdminConfig showAttribute $ldapUserRegistryId $attrib]
+}
+
+proc getCustomUserRegistryAttributes {attrib} {
+	global AdminConfig
+	
+	set cusUserRegistry [$AdminConfig list CustomUserRegistry]
+	return [$AdminConfig showAttribute $cusUserRegistry $attrib]
+}
+
+proc getldapSearchFilterAttributes {attrib} {
+	global AdminConfig
+	
+	set ldapSearchFilter [$AdminConfig list LDAPSearchFilter]
+	return [$AdminConfig showAttribute $ldapSearchFilter $attrib]
+}
+
+proc getCSIiaAttributes {attrib} {
+	global AdminConfig
+	
+	set mlayer [$AdminConfig list MessageLayer]
+	set tlayer [$AdminConfig list TransportLayer]
+	set ilayer [$AdminConfig list IdentityAssertionLayer]
+	set claims [$AdminConfig list SecurityProtocolConfig] 
+	set s_mqop [$AdminConfig showAttribute [lindex $mlayer 0] supportedQOP]
+	set r_mqop [$AdminConfig showAttribute [lindex $mlayer 0] requiredQOP]
+	set s_tqop [$AdminConfig showAttribute [lindex $tlayer 0] supportedQOP]
+	set r_tqop [$AdminConfig showAttribute [lindex $tlayer 0] requiredQOP]
+	set i_qop [$AdminConfig showAttribute [lindex $ilayer 0] supportedQOP]
+	
+	switch -exact -- $attrib {
+		BasicAuth {
+			if {[string match [$AdminConfig showAttribute $s_mqop establishTrustInClient] false]} {
+				if {[string match [$AdminConfig showAttribute $r_mqop establishTrustInClient] false} {
+					return Never
+				} else {
+					return Required
+				}
+			} else {
+				return Support
+			}
+		}
+		ClientCert {
+			if {[string match [$AdminConfig showAttribute $s_tqop establishTrustInClient] false]} {
+				if {[string comp [$AdminConfig showAttribute $r_tqop establishTrustInClient] false} {
+					return Never
+				} else {
+					return Required
+				}
+			} else {
+				return Support
+			}
+		}
+		IdentityAssertion {
+			return [$AdminConfig showAttribute $i_qop enable]
+		}
+		TrustedServers {
+			set trustServers {}
+			set serverLists [lindex [$AdminConfig showAttribute [lindex $ilayer 0] trustedServers] 0] 
+			foreach server $serverLists {
+			    set trustServers "[$AdminConfig showAttribute $server serverId],$trustServers"
+			}
+			return $trustServers
+		}
+		isStateful {
+			return [$AdminConfig showAttribute [lindex $claims 0] stateful]
+		}
+	}											    
+}
+
+proc getCSIoaAttributes {attrib} {
+	global AdminConfig
+	
+	set mlayer [$AdminConfig list MessageLayer]
+	set tlayer [$AdminConfig list TransportLayer]
+	set ilayer [$AdminConfig list IdentityAssertionLayer]
+	set claims [$AdminConfig list SecurityProtocolConfig] 
+	set s_mqop [$AdminConfig showAttribute [lindex $mlayer 1] supportedQOP]
+	set r_mqop [$AdminConfig showAttribute [lindex $mlayer 1] requiredQOP]
+	set s_tqop [$AdminConfig showAttribute [lindex $tlayer 1] supportedQOP]
+	set r_tqop [$AdminConfig showAttribute [lindex $tlayer 1] requiredQOP]
+	set i_qop [$AdminConfig showAttribute [lindex $ilayer 1] supportedQOP]
+	
+	switch -exact -- $attrib {
+		BasicAuth {
+			if {[string match [$AdminConfig showAttribute $s_mqop establishTrustInClient] false]} {
+				if {[string match [$AdminConfig showAttribute $r_mqop establishTrustInClient] false} {
+					return Never
+				} else {
+					return Required
+				}
+			} else {
+				return Support
+			}
+		}
+		ClientCert {
+			if {[string match [$AdminConfig showAttribute $s_tqop establishTrustInClient] false]} {
+				if {[string match [$AdminConfig showAttribute $r_tqop establishTrustInClient] false} {
+					return Never
+				} else {
+					return Required
+				}
+			} else {
+				return Support
+			}
+		}
+		IdentityAssertion {
+			return [$AdminConfig showAttribute $i_qop enable]
+		}
+		isStateful {
+			return [$AdminConfig showAttribute [lindex $claims 0] stateful]
+		}
+	}		
+}
+
+proc getCSIicAttributes {attrib} {
+	global AdminConfig
+	
+	set tlayer [$AdminConfig list TransportLayer]
+	set claims [$AdminConfig list SecurityProtocolConfig] 
+	set s_tqop [$AdminConfig showAttribute [lindex $tlayer 0] supportedQOP]
+	set r_tqop [$AdminConfig showAttribute [lindex $tlayer 0] requiredQOP]
+	set iiopTransport [$AdminConfig showAttribute [lindex $tlayer 0] serverAuthentication]
+	
+	switch -exact -- $attrib {
+		Transport {
+			if {[string match [$AdminConfig showAttribute $s_tqop enableProtection] false]} {
+				if {[string match [$AdminConfig showAttribute $r_tqop establishTrustInClient] false} {
+					return TCPIP
+				} else {
+					return SSL-Required
+				}
+			} else {
+				return SSL-Supported
+			}
+		}
+		SSLSetting {
+			return [$AdminConfig showAttribute $iiopTransport sslConfig]
+		}
+	}
+}
+
+proc getCSIocAttributes {attrib} {
+	global AdminConfig
+	
+	set tlayer [$AdminConfig list TransportLayer]
+	set claims [$AdminConfig list SecurityProtocolConfig] 
+	set s_tqop [$AdminConfig showAttribute [lindex $tlayer 1] supportedQOP]
+	set r_tqop [$AdminConfig showAttribute [lindex $tlayer 1] requiredQOP]
+	set iiopTransport [$AdminConfig showAttribute [lindex $tlayer 1] serverAuthentication]
+	
+	switch -exact -- $attrib {
+		Transport {
+			if {[string match [$AdminConfig showAttribute $s_tqop enableProtection] false]} {
+				if {[string match [$AdminConfig showAttribute $r_tqop establishTrustInClient] false} {
+					return TCPIP
+				} else {
+					return SSL-Required
+				}
+			} else {
+				return SSL-Supported
+			}
+		}
+		SSLSetting {
+			return [$AdminConfig showAttribute $iiopTransport sslConfig]
+		}
+	}
+}
+
+proc getSASicAttributes {attrib} {
+	global AdminConfig
+	
+	set tlayer [$AdminConfig list TransportLayer]
+	set iiopTransport [$AdminConfig showAttribute [lindex $tlayer 2] serverAuthentication]
+	
+	switch -exact -- $attrib {
+		SSLSetting {
+			return [$AdminConfig showAttribute $iiopTransport sslConfig]
+		}
+	}
+}
+
+proc getSASocAttributes {attrib} {
+	global AdminConfig
+	
+	set tlayer [$AdminConfig list TransportLayer]
+	set iiopTransport [$AdminConfig showAttribute [lindex $tlayer 3] serverAuthentication]
+	
+	switch -exact -- $attrib {
+		SSLSetting {
+			return [$AdminConfig showAttribute $iiopTransport sslConfig]
+		}
+	}
+}
+
+
+proc getAdditionalSSLAttributes {sslAlias settingId attrib} {
+	global AdminConfig
+	set matchFound 0
+	
+	switch -exact -- $attrib {	
+		cryptoHardware {
+			return [$AdminConfig showall $settingId cryptoHardware]
+		}
+		properties {
+			return [$AdminConfig showall $settingId properties]
+		}
+	}            	
+}
+
+
+proc getSSLSettingAttributes {sslAlias attrib} {
+	global AdminConfig
+	
+	set sslConfigList [$AdminConfig list SSLConfig]
+	foreach sslConfigId $sslConfigList {
+		set alias [$AdminConfig showAttribute $sslConfigId alias]
+		if {[string compare $alias $sslAlias] == 0} {
+			break
+		}
+	}
+	
+	set settingId [$AdminConfig showAttribute $sslConfigId setting]
+		
+	switch -exact -- $attrib {
+		
+		keyFileName {
+			return [$AdminConfig showAttribute $settingId keyFileName]
+		}
+		keyFilePassword {
+			return [$AdminConfig showAttribute $settingId keyFilePassword]
+		}
+		keyFileFormat {
+			return [$AdminConfig showAttribute $settingId keyFileFormat]
+		}
+		trustFileName {
+			return [$AdminConfig showAttribute $settingId trustFileName]
+		}
+		trustFilePassword {
+			return [$AdminConfig showAttribute $settingId trustFilePassword]
+		}
+		trustFileFormat {
+			return [$AdminConfig showAttribute $settingId trustFileFormat]
+		}
+		clientAuthentication {
+			return [$AdminConfig showAttribute $settingId clientAuthentication]
+		}
+		securityLevel {
+			return [$AdminConfig showAttribute $settingId securityLevel]
+		}
+		enableCryptoHardwareSupport {
+			return [$AdminConfig showAttribute $settingId enableCryptoHardwareSupport]
+		}
+	}            	
+}
+
+proc getJAASAuthDataAttributes {jaasAlias attrib} {
+	global AdminConfig
+	
+	set matchFound 0
+	set listOfJAASAuthData [$AdminConfig list JAASAuthData]
+	foreach jaasConfigId $listOfJAASAuthData {
+		set alias [$AdminConfig showAttribute $jaasConfigId alias]
+		puts stdout "jaasConfigId=$jaasConfigId, alias=$alias, jaasAlias=$jaasAlias"
+		if {[string compare $alias $jaasAlias] == 0} {
+			set matchFound 1
+			break
+		}
+	}	
+	if {$matchFound == 1} {
+		switch -exact -- $attrib {
+			userId {
+				return [$AdminConfig showAttribute $jaasConfigId userId]
+			}
+			password {
+				return [$AdminConfig showAttribute $jaasConfigId password]
+			}
+			description {
+			 	return [$AdminConfig showAttribute $jaasConfigId description]
+			}
+		}
+	} else {
+		puts stdout "The given alias $jaasAlias does not exist"
+	}
+}
+
+proc getAppLoginAttributes {loginId attrib} {
+	global AdminConfig
+	
+        switch -exact -- $attrib {
+		moduleClassName {
+			return [$AdminConfig showAttribute $loginId moduleClassName]
+		}
+		authenticationStrategy {
+			return [$AdminConfig showAttribute $loginId authenticationStrategy]
+		}
+		options {
+			return [$AdminConfig showAttribute $loginId options]
+		}
+	}
+}
+
+proc getcryptoHardwareTokenAttributes {sslAlias attrib} {
+	global AdminConfig
+	
+	set matchFound 0
+        set listOfSSLConfig [$AdminConfig list SSLConfig]
+        foreach sslConfigId $listOfSSLConfig { 
+	        set alias [$AdminConfig showAttribute $sslConfigId alias]
+		if {[string compare $alias $sslAlias] == 0} {
+			set matchFound 1
+			break
+		}
+		if {$matchFound == 1} {
+			set settingId [$AdminConfig showAttribute $sslConfigId setting]
+			set cryptoHardwareId [$AdminConfig showAttribute $settingId cryptoHardware]
+			return [$AdminConfig showAttribute $cryptoHardwareToken $attrib]
+		} else {
+			puts stdout "The given alias $sslAlias does not exist"
+		}
+	} 
+}
+
+
+
+proc getTAIClassNames {} {
+}  
+
+###############################################################################
+#Specifies a list of userid and password for use by Java 2 Connector security
+############################################################################### 
+proc createJAASAuthData {} {
+global AdminConfig
+        set security_root [$AdminConfig list Security]    
+         
+	set loop true
+	set auth_attrib {}
+	puts stdout "\tDefining a new J2C Authentication Data"
+	puts stdout "===================================================="
+	while {$loop} {
+		puts stdout "\nPlease enter your choice from the following menu choices:"
+		puts stdout "\n 1)  Set Alias (Required)"
+		puts stdout "\n 2)  Set User ID (Required)"
+		puts stdout "\n 3)  Set Password (Required)"
+		puts stdout "\n 4)  Enter Description (Optional)"
+		puts stdout "\n 5)  Save Current Configuration"
+		puts stdout "\n 6)  Back to Previous Menu"
+		puts stdout "\n 7)  Back to Main Menu"
+		puts stdout "\nYour Choice:"
+		set subChoice [gets stdin]
+		
+		switch -exact -- $subChoice {
+			1 { 	puts stdout "Please enter the alias"
+				set userinput [gets stdin]
+				if {$userinput != {}} {
+					set nodeId [$AdminConfig getid /Node:/]
+					set hostname [$AdminConfig showAttribute $nodeId hostName] 
+					set newAlias $hostname/$userinput
+					lappend auth_attrib [list alias $newAlias] 
+				}
+			  }      	
+			2 { 	puts stdout "Please enter the UserID"
+				set userinput [gets stdin]
+				if {$userinput != {}} {
+					lappend auth_attrib [list userId $userinput]
+				}
+			  }      
+			3 { 	puts stdout "Please enter the Password"
+				set userinput [gets stdin]
+				if {$userinput != {}} {
+					lappend auth_attrib [list password $userinput] 
+				}
+			  }      
+			4 { 	puts stdout "Please enter the description"
+				set userinput [gets stdin]
+				if {$userinput != {}} {
+					lappend auth_attrib [list description $userinput]
+				}
+			  }    
+
+                        5 { 	if {[llength $auth_attrib] != 0} {
+					puts stdout "\nauth_attrib=$auth_attrib"
+					$AdminConfig create JAASAuthData $security_root $auth_attrib
+					$AdminConfig save
+					set auth_attrib {}
+				} 
+			  }
+			6 { set loop false;  break }
+			7 { mainMenu }
+		}
+	}   
+}
+
+################################################################################
+#
+# Display all the JAASAuth Entries defined for use by Java 2 Connector Security
+#
+################################################################################
+
+proc showJAASAuthData {} {
+global AdminConfig
+
+   
+   set definedJAASAuth [$AdminConfig list JAASAuthData]
+   
+   puts stdout "*******************************************"
+   
+   foreach jaasAuthData $definedJAASAuth {
+      puts stdout "[$AdminConfig showAttribute $jaasAuthData alias]"
+   }
+   puts stdout "*******************************************"
+}
+
+#################################################################################
+#
+#Provide a menu to modify the userId,password and description of a JAASAuthData
+#
+#################################################################################
+
+proc modifyJAASAuthData {jaasAuthAlias} {
+	global AdminConfig
+
+	set matchFound 0
+	set listJAASAuthData [$AdminConfig list JAASAuthData]
+	foreach jaasAuthId $listJAASAuthData {
+		set alias [$AdminConfig showAttribute $jaasAuthId alias]
+		if {[string compare $alias $jaasAuthAlias] == 0} {
+			set matchFound 1
+			break
+		}
+	}
+	if {$matchFound == 1} {     
+		set loop true
+		puts stdout "\tModifying J2C Authentication Data for alias $jaasAuthAlias"
+		puts stdout "=================================================================="
+		while {$loop} {
+			puts stdout "\nPlease enter your choice from the following menu choices:"
+			puts stdout "\n 1)  Modify the userId ([getJAASAuthDataAttributes $jaasAuthAlias userId])"
+			puts stdout "\n 2)  Modify the password"
+			puts stdout "\n 3)  Modify the description ([getJAASAuthDataAttributes $jaasAuthAlias description])"
+			puts stdout "\n 4)  Save the Current Configuration"
+			puts stdout "\n 5)  Back to the Previous Menu"
+			puts stdout "\n 6)  Back to Main Menu"
+			puts stdout "\nYour Choice:"		
+			set subChoice [gets stdin]
+		
+			switch -exact -- $subChoice {
+				1 { 	puts stdout "Enter the new userId"
+					set userId [gets stdin]
+					if {$userId != {}} {
+						$AdminConfig modify $jaasAuthId [list [list userId $userId]]
+						set modifiedJaasAuth [$AdminConfig showall $jaasAuthId]
+						puts stdout "JAASAuthData for alias $jaasAuthAlias is $modifiedJaasAuth" 
+					}
+				}      
+				2 { 	puts stdout "Enter the new password"
+					set password [gets stdin]	
+					if {$password != {}} {
+						$AdminConfig modify $jaasAuthId [list [list password $password]]
+						set modifiedjaasAuth [$AdminConfig showall $jaasAuthId]
+						puts stdout "JAASAuthData for alias $jaasAuthAlias is $modifiedJaasAuth"
+					}
+				}
+				3 { 	puts stdout "Enter the new description"
+					set description [gets stdin]
+					if {$description != {}} {
+						$AdminConfig modify $jaasAuthId [list [list description $description]]
+						set modifiedJaasAuth [$AdminConfig showall $jaasAuthId]
+						puts stdout "JAASAuthData for alias $jaasAuthAlias is $modifiedJaasAuth"       
+					}
+				}
+				4 {     saveConfig
+					set jaasAuthData [$AdminConfig showall $jaasAuthId]
+					puts stdout "JAASAuthData for alias $jaasAuthAlias is $jaasAuthData"   
+				}     
+				5 { set loop false;break }
+				6 { mainMenu }
+		}
+	}    
+
+   } else {
+      puts stdout "No matching JAASAuth Entry was found for the given alias $jaasAuthAlias"
+   }
+}
+
+############################################################################
+#
+# A user can delete the JAASAuthData corresponding to a given alias
+#
+############################################################################
+ 
+proc deleteJAASAuthData {jaasAuthAlias} {
+global AdminConfig
+
+   set matchFound 0
+   set jaasAuthDataList [$AdminConfig list JAASAuthData]
+   foreach jaasAuthId $jaasAuthDataList {
+      set getAlias [$AdminConfig showAttribute $jaasAuthId alias]
+      if {[string compare $getAlias $jaasAuthAlias] == 0} {
+         $AdminConfig showall $jaasAuthId
+	 $AdminConfig remove $jaasAuthId
+	 $AdminConfig save
+	 set matchFound 1
+	 break
+      }
+   }
+   if {$matchFound == 0} {
+      puts stdout "No match was found for the given alias $jaasAuthAlias"
+   }      	 
+}
+
+proc addJAASCustomProperties {parentConfigId} {
+        global AdminConfig
+        
+        set custom_attrib {}
+        
+        set loop true
+	puts stdout "\tAdd Custom Properties"
+	puts stdout "==========================="
+	while {$loop} {
+		puts stdout "\nPlease enter your choice from the following menu choices:"
+		puts stdout "\n 1)  Set Property Name"
+		puts stdout "\n 2)  Set Property Value"
+		puts stdout "\n 3)  Set Property Description"
+                puts stdout "\n 4)  Set Required y/n"
+                puts stdout "\n 5)  Set Validation Expression"
+                puts stdout "\n 6)  Save Current Configuration"
+		puts stdout "\n 7)  Back to Previous Menu"
+		puts stdout "\n 8)  Back to Main Menu"
+		puts stdout "\nYour Choice:"		
+		set subChoice [gets stdin]
+		
+		switch -exact -- $subChoice {
+			1 { 	puts stdout "Enter Property Name"
+				set userinput [gets stdin]
+				if {$userinput != {}} {
+					lappend custom_attrib [list name $userinput]
+				}
+                          }      	
+                        2 { 	puts stdout "Enter Property Value"
+				set userinput [gets stdin]
+				if {$userinput != {}} {
+					lappend custom_attrib [list value $userinput]
+				}
+                                
+			  }      	
+                        3 { 	puts stdout "Enter Property Description"
+				set userinput [gets stdin]
+				if {$userinput != {}} {
+					lappend custom_attrib [list description $userinput]
+				}
+		          }
+                        4 { 	puts stdout "Enter Property Required y/n"
+		        	set userinput [gets stdin]
+				if {$userinput != {}} {
+					if {[regexp $userinput y]} {
+						lappend custom_attrib [list required "true"]
+						
+					} else {
+						lappend custom_attrib [list required "false"]
+						
+					}
+				}
+			  }      	
+                        5 { 	puts stdout "Enter Validation Expression"
+				set userinput [gets stdin]
+				if {$userinput != {}} {
+					lappend custom_attrib [list validationExpression $userinput]
+				}
+		          }
+
+                        6 { if {[llength $custom_attrib] != 0} { 
+			       puts stdout "custom_attrib=$custom_attrib, parentConfigId=$parentConfigId"
+			       $AdminConfig modify $parentConfigId [list [list options [list $custom_attrib]]]
+			       $AdminConfig save
+                            }
+			    set custom_attrib {}
+                          }     
+			7 { set loop false; break }
+			8 { mainMenu }
+         	}
+         }
+}                              
+
+proc showJAASCustomProperties {parentConfigId} {
+global AdminConfig	
+		      
+   set displayProps [$AdminConfig showall $parentConfigId options]
+   puts stdout "\n$displayProps"	    
+}
+
+
+proc modifyJAASCustomProperty {propertyName parentConfigId} {
+	global AdminConfig
+
+	set propIds [$AdminConfig showAttribute $parentConfigId options]
+	puts stdout "properties=$propIds,parentConfigId=$parentConfigId"
+	foreach Id $propIds {
+		set propName [$AdminConfig showAttribute $Id name]
+		puts stdout "propName=$propName,propertyName=$propertyName"
+		if {[string compare $propName $propertyName] == 0} {
+			puts stdout "property names match"
+			set propValue [$AdminConfig showAttribute $Id value]
+			set propDescription [$AdminConfig showAttribute $Id description]
+			set propRequired [$AdminConfig showAttribute $Id required]
+			set propValidationExpression [$AdminConfig showAttribute $Id validationExpression]
+			puts stdout "The current settings for $propName are: $propName, $propValue, $propDescription, $propRequired, $propValidationExpression"
+			set prop_attrib {}
+			set loop true
+			puts stdout "\tModifying Properties for $propName"
+			puts stdout "===================================================="
+			while {$loop} {
+				puts stdout "\nPlease enter your choice from the following menu choices:"
+				puts stdout "\n 1)  Modify Property Name"
+				puts stdout "\n 2)  Modify Property Value"
+				puts stdout "\n 3)  Modify Property Description"
+				puts stdout "\n 4)  Modify Required y|n"
+				puts stdout "\n 5)  Modify Validation Expression"
+				puts stdout "\n 6)  Save Current Configuration"
+				puts stdout "\n 7)  Back to Previous Menu"
+				puts stdout "\n 8)  Back to Main Menu"
+				puts stdout "\nYour Choice:"
+				set subChoice [gets stdin]
+	    
+				switch -exact -- $subChoice {
+					1 { 	puts stdout "Enter new Property Name"
+						set userinput [gets stdin]
+						if {$userinput != {}} {
+							lappend  prop_attrib [list name $userinput]
+						}
+					}
+					2 { 	puts stdout "Enter new Property Value"
+						set userinput [gets stdin]
+						if {$userinput != {}} {
+							lappend prop_attrib [list value $userinput]
+						}
+					}
+					3 { 	puts stdout "Enter new Property Description"
+						set userinput [gets stdin]
+						if {$userinput != {}} {
+							lappend prop_attrib [list description $userinput]
+						}
+					}
+					4 { 	puts stdout "Enter new value for Required y|n"
+						set userinput [gets stdin]
+						if {$userinput != {}} {
+							lappend prop_attrib [list required $userinput]
+						}
+					}
+					5 { 	puts stdout "Enter new value for Validation Expression"
+						set userinput [gets stdin]
+						if {$userinput != {}} {
+							lappend prop_attrib [list validationExpression $userinput]
+						}
+					}
+					6 { 	if {[llength $prop_attrib] != 0} {
+							$AdminConfig modify $Id $prop_attrib
+							$AdminConfig save
+						}
+						set prop_attrib {}   
+					}
+					7 { 	set loop false;  break}
+					8 {	mainMenu }   	  	 	
+				}
+			}
+		}
+	}
+}     
+
+proc deleteJAASCustomProperty {propertyName parentConfigId} {
+global AdminConfig
+
+   set propIds [lindex [$AdminConfig showAttribute $parentConfigId options] 0]
+   foreach Id $propIds {
+      set propName [$AdminConfig showAttribute $Id name]
+      puts stdout "propName=$propName,propertyName=$propertyName"
+      if {[string compare $propName $propertyName] == 0} {
+         puts stdout "property names match,remove=$Id"
+	 $AdminConfig remove $Id 
+      }
+   }
+}
+
+proc subMenu_Options {parentConfigId} {
+	global AdminConfig
+
+        set loop true
+        puts stdout "\tConfiguring Custom Properties for JAAS Login Modules"
+        puts stdout "============================================================"
+        while {$loop} {
+                puts stdout "\nPlease enter your choice from the following menu choices:"
+                puts stdout "\n 1) Add Custom Properties"
+                puts stdout "\n 2) Show Custom Properties"
+                puts stdout "\n 3) Modify a Custom Property"
+                puts stdout "\n 4) Delete a Custom Property"
+                puts stdout "\n 5) Save Current Configuration"
+                puts stdout "\n 6) Back to Previous Menu"
+                puts stdout "\nYour Choice:"
+                set subChoice [gets stdin]
+                
+                switch -exact -- $subChoice {
+                        1 {
+				addJAASCustomProperties $parentConfigId
+				$AdminConfig showall $parentConfigId
+                          }
+                          
+                        2 {  	showJAASCustomProperties $parentConfigId}
+                          
+                        3 {  	puts stdout "Available Options for modification are\n"
+				showJAASCustomProperties $parentConfigId
+				puts stdout "Please specify the Property Name you want to modify"
+				set userinput [gets stdin]
+				if {$userinput != {}} {
+					puts stdout "The Custom Property specified is $userinput"  
+					modifyJAASCustomProperty $userinput $parentConfigId
+				}
+                          }
+                        4 { 	puts stdout "Available Options for deletion are\n"
+				showJAASCustomProperties $parentConfigId
+				puts stdout "Please specify the name of the Option to delete"
+				set userinput [gets stdin]
+				if {$userinput != {}} {
+					deleteJAASCustomProperty $userinput $parentConfigId
+				}
+                          }
+                        5 { saveConfig }
+			
+                        6 { set loop false; break }
+                }
+       }
+}                      
+
+########################################################
+#
+# Procedure to show all the defined JAAS Login Modules
+#
+########################################################
+
+proc showJAASLoginModules {jaasAlias} {
+	global AdminConfig
+	
+        set JAASConfigEntryIds [$AdminConfig list JAASConfigurationEntry]
+	foreach  jaasConfigId $JAASConfigEntryIds {
+	   set alias [$AdminConfig showAttribute $jaasConfigId alias]
+	   if {[string compare $alias $jaasAlias] == 0} {
+	      break
+	   } 
+	}     
+	
+        set loginModuleIds [lindex [$AdminConfig showAttribute $jaasConfigId loginModules] 0]
+	
+	foreach Id $loginModuleIds {
+	     
+	   puts stdout "**************** The LoginModules are **********************"
+	   set displaymodule [$AdminConfig showall $Id]
+	   puts stdout "$displaymodule"
+	   puts stdout "************************************************************"
+	}   
+}
+
+##################################################################
+#
+# Modify the JAAS Login Modules for the given alias
+#
+################################################################## 
+
+proc modifyJAASLoginModules {jaasAlias} {
+	global AdminConfig
+	
+        set JAASConfigEntryIds [$AdminConfig list JAASConfigurationEntry]
+	foreach  jaasConfigId $JAASConfigEntryIds {
+	   set alias [$AdminConfig showAttribute $jaasConfigId alias]
+	   if {[string compare $alias $jaasAlias] == 0} {
+	      set jaasLoginIds [lindex [$AdminConfig showAttribute $jaasConfigId loginModules] 0] 
+	      break
+	   } 
+	}     
+	
+        puts stdout "Login Modules available for modifications are\n"
+	foreach Id $jaasLoginIds {
+		puts stdout "*************************************************"
+		set className [$AdminConfig showAttribute $Id moduleClassName]
+		puts stdout "Module ClassName          $className"
+		set authStrategy [$AdminConfig showAttribute $Id authenticationStrategy]
+		puts stdout "Authentication Strategy      $authStrategy"
+		set moduleOptions [$AdminConfig showAttribute $Id options]
+		puts stdout "Custom Properties      $moduleOptions"
+		puts stdout "*************************************************"
+	
+		puts stdout "Please enter which Module ClassName to modify"
+		set modClassName [gets stdin]
+		if {$modClassName != {}} {
+			set loop true
+			set prop_attrib {}
+			puts stdout "\tMenu to modify $className Login Module "
+			puts stdout "==================================================="
+			while {$loop} {
+				puts stdout "\nPlease enter your choice from the following menu choices:"
+				puts stdout "\n 1)  Modify the Module ClassName ($modClassName)"
+				puts stdout "\n 2)  Modify the Authentication Strategy ($authStrategy)"
+				puts stdout "\n 3)  Modify the Options ($moduleOptions)"
+				puts stdout "\n 4)  Save Current Configuration"
+				puts stdout "\n 5)  Continue to next JAAS Login Module"
+				puts stdout "\nYour Choice:"
+				set subChoice [gets stdin]
+		
+				switch -exact -- $subChoice {
+					1 {  	puts stdout "Please enter the new moduleClassName"
+						set userinput [gets stdin]
+						if {$userinput != {}} {
+							lappend prop_attrib [list moduleClassName $userinput]
+						}		   
+					}
+					2 {  	puts stdout "Please enter the new Authentication Strategy"
+						set userinput [gets stdin]
+						if {$userinput != {}} {
+							lappend prop_attrib [list authenticationStrategy $userinput]
+						}		   
+					}
+					3 { 	subMenu_Options $Id
+					}   
+					4 {   	if {[llength $prop_attrib] != 0} {
+							$AdminConfig modify $Id $prop_attrib
+							$AdminConfig save
+							set modifiedProp [$AdminConfig showall $Id]
+							puts stdout "modifiedProp=$modifiedProp"
+							set prop_attrib {}
+						} 
+					}
+					5 { 	set loop false;break }
+				}
+			}   
+		}
+	}
+}		
+
+
+##################################################################
+#
+# Delete the JAAS Login Modules for the given alias
+#
+################################################################## 
+
+proc deleteJAASLoginModules {jaasAlias} {
+	global AdminConfig
+	
+        set JAASConfigEntryIds [$AdminConfig list JAASConfigurationEntry]
+	foreach  jaasConfigId $JAASConfigEntryIds {
+	   set alias [$AdminConfig showAttribute $jaasConfigId alias]
+	   if {[string compare $alias $jaasAlias] == 0} {
+	      set jaasLoginIds [lindex [$AdminConfig showAttribute $jaasConfigId loginModules] 0] 
+	      break
+	   } 
+	}     
+	
+        puts stdout "loginModuleIds=$jaasLoginIds"
+	foreach Id $jaasLoginIds {
+	       
+	   #puts stdout "**************** The LoginModules are **********************"
+	   #set displaymodule [$AdminConfig showall $Id]
+	   #puts stdout "$displaymodule"
+	   #puts stdout "************************************************************"
+	   
+	   set loop true
+	   set prop_attrib {}
+	   puts stdout "\tMenu to delete JAAS Login Modules for $Id"
+	   puts stdout "=================================================================="
+	   while {$loop} {
+		puts stdout "\nPlease enter your choice from the following menu choices:"
+		puts stdout "\n 1)  Delete the Module ClassName ([getAppLoginAttributes $Id moduleClassName])"
+		puts stdout "\n 2)  Delete the Authentication Strategy ([getAppLoginAttributes $Id authenticationStrategy])"
+		puts stdout "\n 3)  Delete the Options ([getAppLoginAttributes $Id options])"
+		puts stdout "\n 4)  Save Current Configuration"
+		puts stdout "\n 5)  Continue to next JAAS Login Module"
+		puts stdout "\nYour Choice:"
+		set subChoice [gets stdin]
+		
+		switch -exact -- $subChoice {
+			1 {  puts stdout "Please enter the new moduleClassName"
+			     set userinput [gets stdin]
+			     if {$userinput != {}} {
+			        lappend prop_attrib [list moduleClassName $userinput]
+			     }		   
+			  }
+			2 {  puts stdout "Please enter the new Authentication Strategy"
+			     set userinput [gets stdin]
+			     if {$userinput != {}} {
+			        lappend prop_attrib [list authenticationStrategy $userinput]
+			     }		   
+			  }
+			3 { subMenu_Options $Id
+			  }   
+			4 {   if {[llength $prop_attrib] != 0} {
+			         $AdminConfig modify $Id $prop_attrib
+				 saveConfig
+			         set modifiedProp [$AdminConfig showall $Id]
+				 puts stdout "modifiedProp=$modifiedProp"
+			         set prop_attrib {}
+			      } 
+			  }
+			5 { set loop false;break }
+		}
+	   }   
+   	}
+}
+
+
+
+####################################################################
+#
+# Create JAAS Login Modules for the given alias
+#
+####################################################################
+
+proc  createJAASLoginModule {appLoginAlias} {
+global AdminConfig				       
+     
+	set module_attrib {}
+	set matchFound 0
+	set JAASConfigEntryIds [$AdminConfig list JAASConfigurationEntry]
+	
+	foreach jaasConfigEntryId $JAASConfigEntryIds {
+		set alias [$AdminConfig showAttribute $jaasConfigEntryId alias]
+		if {[string compare $alias $appLoginAlias] == 0} {
+			set matchFound 1
+			puts stdout "createJAASLoginModule:jaasConfigId=$jaasConfigEntryId,alias=$alias"
+			break
+		} 
+	}  
+	if {$matchFound == 0} {
+		puts stdout "Application Login Alias was not created correctly"
+		return
+	}
+	set loop true    
+	puts stdout "\tDefining a new JAAS Login Module for alias $appLoginAlias"
+	puts stdout "============================================================="
+	while {$loop} {
+		puts stdout "\nPlease enter your choice from the following menu choices:"
+		puts stdout "\n 1)  Set ModuleClassName (Required)"
+		puts stdout "\n 2)  Set Authentication Strategy (Required)"
+		puts stdout "\n 3)  Save Current Configuration"
+		puts stdout "\nYour Choice:"
+		set subChoice [gets stdin]
+		
+		switch -exact -- $subChoice {
+			1 {  	puts stdout "Please enter the moduleClassName"
+				set className [gets stdin]
+				if {$className != {}} {
+					lappend module_attrib [list moduleClassName $className]
+				}
+			  }	
+			2 {  	puts stdout "Choose Authentication Strategy REQUIRED|REQUISITE|SUFFICIENT|OPTIONAL"
+				set strategy [gets stdin]
+				if {$strategy != {}} {
+					lappend module_attrib [list authenticationStrategy $strategy]
+				}	
+			  }      
+			3 {	if {[llength $module_attrib] != 0} {
+					puts stdout "\nmodule_attrib=$module_attrib"
+					$AdminConfig create JAASLoginModule $jaasConfigEntryId $module_attrib
+					$AdminConfig save
+					set module_attrib {}
+					$AdminConfig showall $jaasConfigEntryId
+				}
+				set $loop false
+				break 
+			  }  
+                }
+	}
+} 		      
+
+##########################################################################
+#
+# Procedure to show aliases for defined application login configurations  
+#
+##########################################################################
+
+proc showAliasesForLoginConfigurations {} {
+global AdminConfig
+
+   set definedAppLogin [$AdminConfig list JAASConfigurationEntry]
+   puts stdout "**************************************************"
+   foreach appLogin $definedAppLogin {
+      puts stdout "[$AdminConfig showAttribute $appLogin alias]"
+   }
+   puts stdout "**************************************************"   
+} 
+
+###################################################################################
+#
+# A user can delete the JAAS Configuration Entry corresponding to a given alias
+#
+###################################################################################
+    
+proc deleteJAASConfigurationEntry {loginConfigAlias} {
+global AdminConfig
+
+   set matchFound 0
+   set jaasConfigurationEntryList [$AdminConfig list JAASConfigurationEntry]
+   puts stdout "ConfigAlias=$loginConfigAlias, ConfigEntryList=$jaasConfigurationEntryList"
+   foreach jaasConfigId $jaasConfigurationEntryList {
+      puts stdout "jaasConfigId=$jaasConfigId"
+      set getAlias [$AdminConfig showAttribute $jaasConfigId alias]
+      puts stdout "getAlias=$getAlias, loginConfigAlias=$loginConfigAlias"
+      set result [string compare $getAlias $loginConfigAlias]
+      puts stdout "result=$result"
+      if {[string compare $getAlias $loginConfigAlias] == 0} {
+         $AdminConfig showall $jaasConfigId
+	 $AdminConfig remove $jaasConfigId
+	 $AdminConfig save
+	 set matchFound 1
+	 break
+      }
+   }
+   if {$matchFound == 0} {
+      puts stdout "No match was found for the given alias $loginConfigAlias"
+   }      	 
+}
+
+###############################################################
+#
+# Menu to modify the JAAS Configuration Entries
+#
+###############################################################
+    
+proc modifyJAASConfigurationEntry {loginConfigAlias} {
+	global AdminConfig
+	set loop true
+	
+	puts stdout "\tMenu to modify Application Login Configurations for alias $loginConfigAlias"
+	puts stdout "================================================================================"
+	while {$loop} {
+		puts stdout "\nPlease enter your choice from the following menu choices:"
+		puts stdout "\n 1)  Modify the Login Modules"
+		puts stdout "\n 2)  Back to Previous Menu"
+		puts stdout "\nYour Choice:"
+		set subChoice [gets stdin]
+		
+		switch -exact -- $subChoice {
+			1 { modifyJAASLoginModules $loginConfigAlias} 
+			2 { set loop false; break }
+		}
+	}   
+}
+
+###############################################################
+#
+# Menu to create the aliases for JAAS Configuration Entries
+#
+###############################################################
+    
+proc createJAASConfigurationEntry {} {
+	global AdminConfig
+	
+	puts stdout "in createJAASConfigurationEntry"
+	set loop true
+	set appConfigAttrib {}
+	set appLoginConfigId [lindex [$AdminConfig list JAASConfiguration] 0]
+	puts stdout "appLoginConfigId=$appLoginConfigId"
+	puts stdout "\tWelcome to Application Login Configuration"
+	puts stdout "================================================================================"
+	while {$loop} {
+		puts stdout "\nPlease enter your choice from the following menu choices:"
+		puts stdout "\n 1)  Create an Alias for JAAS Configuration Entry"
+		puts stdout "\n 2)  Back to Previous Menu"
+		puts stdout "\nYour Choice:"
+		set subChoice [gets stdin]
+		
+		switch -exact -- $subChoice {
+			1 { 	puts stdout "Please enter the alias"
+				set appLoginAlias [gets stdin]
+				if {$appLoginAlias != {}} {
+					set returnCode [validateAppLoginAlias $appLoginAlias]
+					if {$returnCode == 1} { 
+						break
+					}
+					lappend appConfigAttrib [list alias $appLoginAlias]
+					set newEntry [$AdminConfig create JAASConfigurationEntry $appLoginConfigId $appConfigAttrib] 
+					puts stdout "appLoginConfigId=$appLoginConfigId, newEntry=$newEntry"                           
+					configJAASLoginModule $appLoginConfigId $appLoginAlias
+				}
+			  } 
+			2 { 	set $loop false; set appConfigAttrib {}; break }
+		}
+	}   
+}
+
+proc addCustomProperties {parentConfigId} {
+        global AdminConfig
+        
+        set custom_attrib {}
+        
+        set loop true
+	puts stdout "\tAdd Custom Properties"
+	puts stdout "==========================="
+	while {$loop} {
+		puts stdout "\nPlease enter your choice from the following menu choices:"
+		puts stdout "\n 1)  Set Property Name"
+		puts stdout "\n 2)  Set Property Value"
+		puts stdout "\n 3)  Set Property Description"
+                puts stdout "\n 4)  Set Required y/n"
+                puts stdout "\n 5)  Set Validation Expression"
+                puts stdout "\n 6)  Save Current Configuration"
+		puts stdout "\n 7)  Back to Previous Menu"
+		puts stdout "\nYour Choice:"		
+		set subChoice [gets stdin]
+		
+		switch -exact -- $subChoice {
+			1 { 	puts stdout "Enter Property Name"
+				set userinput [gets stdin]
+				if {$userinput != {}} {
+					lappend custom_attrib [list name $userinput]
+				}
+                          }      	
+                        2 { 	puts stdout "Enter Property Value"
+				set userinput [gets stdin]
+				if {$userinput != {}} {
+					lappend custom_attrib [list value $userinput]
+				}
+                                
+			  }      	
+                        3 { 	puts stdout "Enter Property Description"
+				set userinput [gets stdin]
+				if {$userinput != {}} {
+					lappend custom_attrib [list description $userinput]
+				}
+		          }
+                        4 { 	puts stdout "Enter Property Required y/n"
+		        	set userinput [gets stdin]
+				if {$userinput != {}} {
+					if {[regexp $userinput y]} {
+						lappend custom_attrib [list required "true"]
+						
+					} else {
+						lappend custom_attrib [list required "false"]
+						
+					}
+				}
+			  }      	
+                        5 { 	puts stdout "Enter Validation Expression"
+				set userinput [gets stdin]
+				if {$userinput != {}} {
+					lappend custom_attrib [list validationExpression $userinput]
+				}
+		          }
+
+                        6 { puts stdout "custom_attrib=$custom_attrib, parentConfigId=$parentConfigId"
+			    $AdminConfig modify $parentConfigId [list [list properties [list $custom_attrib]]]
+                             
+                          }     
+			7 { set loop false; set custom_attrib {};break }
+         	}
+         }
+}                              
+
+proc showCustomProperties {parentConfigId} {
+global AdminConfig	
+		      
+   set displayProps [$AdminConfig showall $parentConfigId properties]
+   puts stdout "\n$displayProps"	    
+}
+
+
+proc modifyCustomProperty {propertyName parentConfigId} {
+	global AdminConfig
+
+	puts stdout "Property name is $propertyName"
+
+	set propIds [$AdminConfig showAttribute $parentConfigId properties]
+	puts stdout "properties=$propIds,parentConfigId=$parentConfigId"
+	foreach Id $propIds {
+		set propName [$AdminConfig showAttribute $Id name]
+		puts stdout "propName=$propName,propertyName=$propertyName"
+		if {[string compare $propName $propertyName] == 0} {
+			puts stdout "property names match"
+			set propValue [$AdminConfig showAttribute $Id value]
+			set propDescription [$AdminConfig showAttribute $Id description]
+			set propRequired [$AdminConfig showAttribute $Id required]
+			set propValidationExpression [$AdminConfig showAttribute $Id validationExpression]
+			puts stdout "The current settings for $propName are: $propName, $propValue, $propDescription, $propRequired, $propValidationExpression"
+			set prop_attrib {}
+			set loop true
+			puts stdout "\tModifying Properties for $propName"
+			puts stdout "===================================================="
+			while {$loop} {
+				puts stdout "\nPlease enter your choice from the following menu choices:"
+				puts stdout "\n 1)  Modify Property Name"
+				puts stdout "\n 2)  Modify Property Value"
+				puts stdout "\n 3)  Modify Property Description"
+				puts stdout "\n 4)  Modify Required y|n"
+				puts stdout "\n 5)  Modify Validation Expression"
+				puts stdout "\n 6)  Save Current Configuration"
+				puts stdout "\n 7)  Back to Previous Menu"
+				puts stdout "\nYour Choice:"
+				set subChoice [gets stdin]
+	    
+				switch -exact -- $subChoice {
+				1 { 	puts stdout "Enter new Property Name"
+					set userinput [gets stdin]
+					if {$userinput != {}} {
+						lappend  prop_attrib [list name $userinput]
+					}
+				}
+				2 { 	puts stdout "Enter new Property Value"
+					set userinput [gets stdin]
+					if {$userinput != {}} {
+						lappend prop_attrib [list value $userinput]
+					}
+				}
+				3 { 	puts stdout "Enter new Property Description"
+					set userinput [gets stdin]
+					if {$userinput != {}} {
+						lappend prop_attrib [list description $userinput]
+					}
+				}
+				4 { 	puts stdout "Enter new value for Required y|n"
+					set userinput [gets stdin]
+					if {$userinput != {}} {
+						lappend prop_attrib [list required $userinput]
+					}
+				}
+				5 { 	puts stdout "Enter new value for Validation Expression"
+					set userinput [gets stdin]
+					if {$userinput != {}} {
+						lappend prop_attrib [list validationExpression $userinput]
+					}
+				}
+				6 { 	$AdminConfig modify $Id $prop_attrib
+					$AdminConfig save
+				}
+				7 { 	set loop false; set prop_attrib {}; break}
+		      	  	    	  	 	
+				}
+			}
+		}
+	}
+}     
+
+proc deleteCustomProperty {propertyName parentConfigId} {
+	global AdminConfig
+
+	set propIds [lindex [$AdminConfig showAttribute $parentConfigId properties] 0]
+	foreach Id $propIds {
+		set propName [$AdminConfig showAttribute $Id name]
+		puts stdout "propName=$propName,propertyName=$propertyName"
+		if {[string compare $propName $propertyName] == 0} {
+			puts stdout "property names match,remove=$Id"
+			$AdminConfig remove $Id 
+		}
+	}
+}
+
+proc subMenu_CustomProperties {parentConfigId} {
+	global AdminConfig
+
+        set loop true
+        puts stdout "\tConfiguring Custom Properties"
+        puts stdout "===================================="
+        while {$loop} {
+                puts stdout "\nPlease enter your choice from the following menu choices:"
+                puts stdout "\n 1) Add Custom Properties"
+                puts stdout "\n 2) Show Custom Properties"
+                puts stdout "\n 3) Modify a Custom Property"
+                puts stdout "\n 4) Delete a Custom Property"
+                puts stdout "\n 5) Save Current Configuration"
+                puts stdout "\n 6) Back to Previous Menu"
+                puts stdout "\nYour Choice:"
+                set subChoice [gets stdin]
+                
+                switch -exact -- $subChoice {
+                        1 {	addCustomProperties $parentConfigId
+				$AdminConfig showall $parentConfigId
+                        }  
+                        2 { 	showCustomProperties $parentConfigId
+			} 
+                        3 { 	puts stdout "Available Custom Properties for modifications\n"
+				showCustomProperties $parentConfigId
+				puts stdout "Please specify the name of the Custom Property to modify"
+				set userinput [gets stdin]
+				if {$userinput != {}} {
+					puts stdout "The Custom Property specified is $userinput"  
+					modifyCustomProperty $userinput $parentConfigId
+				}
+                        }
+                        4 { 	puts stdout "Available Custom Properties for deletions\n"
+				showCustomProperties $parentConfigId
+				puts stdout "Please specify the name of the Custom Property to delete"
+				set userinput [gets stdin]
+				if {$userinput != {}} {
+					deleteCustomProperty $userinput $parentConfigId
+				}
+                        }
+                        5 { saveConfig }
+                        6 { set $loop false; break }
+                }
+       }
+}                      
+
+proc configureCryptoGraphicToken {settingId} {
+        global AdminConfig
+        
+        set crypto_attrib {}
+	set loop true
+	puts stdout "\tConfiguring Crypto Graphic Token"
+	puts stdout "==========================================="
+	while {$loop} {
+		puts stdout "\nPlease enter your choice from the following menu choices:"
+		puts stdout "\n 1)  Set Token Type (Required)"
+		puts stdout "\n 2)  Set Library File (Required)"
+		puts stdout "\n 3)  Set Password (Required)"
+                puts stdout "\n 4)  Save Current Configuration"
+		puts stdout "\n 5)  Back to Previous Menu"
+		puts stdout "\nYour Choice:"		
+		set subChoice [gets stdin]
+		
+		switch -exact -- $subChoice {
+			1 { 	puts stdout "Enter Token Type"
+				set userinput [gets stdin]
+				if {$userinput != {}} {
+					lappend crypto_attrib [list tokenType $userinput]
+				}
+                          }      	
+                        2 { 	puts stdout "Enter Library File, please give absolute path"
+				set userinput [gets stdin]
+				if {$userinput != {}} {
+					lappend crypto_attrib [list libraryFile $userinput]
+				}
+			  }      	
+                        3 { 	puts stdout "Enter Password"
+				set userinput [gets stdin]
+				if {$userinput != {}} {
+					lappend crypto_attrib [list password $userinput]
+				}
+                                
+		          }
+                        4 {     puts stdout "crypto_attrib=$crypto_attrib"
+				
+				$AdminConfig create CryptoHardwareToken $settingId $crypto_attrib
+				$AdminConfig save
+				set showCrypto [$AdminConfig showAttribute $settingId cryptoHardware]
+				puts stdout "showCrypto=$showCrypto"
+                          }     
+			5 {     set loop false; set crypto_attrib {};break }
+         	}
+         }
+}                              
+
+proc defineCipherCustomProperty {cipherArray} {
+        
+        puts stdout "cipherArray=$cipherArray" 
+        set cust_attrib {}
+	set propName "com.ibm.ssl.cipherSuites"
+	puts stdout "propName=$propName"
+	lappend cust_attrib [list name $propName]
+	lappend cust_attrib [list value $cipherArray]
+	lappend cust_attrib [list description {}]
+	lappend cust_attrib [list required "false"]
+	lappend cust_attrib [list validationExpression {}]
+	puts stdout "cust_attrib=$cust_attrib"
+	return $cust_attrib        
+}                              
+
+proc addCipherSuites {parentConfigId customAttrib} {
+	#global AdminConfig
+
+	#set propertyName "com.ibm.ssl.cipherSuites"
+	#set matchFound 0
+	#set propIds [$AdminConfig showAttribute $parentConfigId properties]
+	#puts stdout "properties=$propIds"
+	#foreach Id $propIds {
+	##	set propName [$AdminConfig showAttribute $Id name]
+	#	puts stdout "propName=$propName,propertyName=$propertyName"
+	#	if {[string compare $propName $propertyName] == 0} {
+	#		puts stdout "property names match"
+	#		set matchFound 1
+	#		break
+	#	} 
+	#}  
+	#if {$matchFound == 0} {
+	#        set p1 [list $customAttrib]
+	#	puts stdout "p1=$p1"
+	#	set p2 [list properties [list $customAttrib]]
+	#	puts stdout "p2=$p2"
+	#	set p3 [list [list properties [list $customAttrib]]]
+	#	puts stdout "p3=$p3"
+	#	puts stdout "parentConfigId=$parentConfigId"
+	#	$AdminConfig modify $parentConfigId [list [list properties [list $customAttrib]]]
+	#} else {     
+	#	$AdminConfig modify $Id [list $customAttrib]
+	#}
+	#$AdminConfig showall $parentConfigId
+	#$AdminConfig save
+	puts "procedure addCipherSuites bypassed. Use the api 2.6, wseclib.addcipher functions.
+}
+
+proc displayCipherSuites {} {
+        global cipher_array         
+        
+        puts stdout "\tHere is a list of Cipher Suites"
+	puts stdout "======================================"
+        parsePropFile $fileProps
+        puts stdout "\n 1) $cipher_array(1)"
+        puts stdout "\n 2) $cipher_array(2)"
+        puts stdout "\n 3) $cipher_array(3)"
+        puts stdout "\n 4) $cipher_array(4)"
+        puts stdout "\n 5) $cipher_array(5)"
+        puts stdout "\n 6) $cipher_array(6)"
+        puts stdout "\n 7) $cipher_array(7)"
+        puts stdout "\n 8) $cipher_array(8)"
+        puts stdout "\n 9) $cipher_array(9)"
+        puts stdout "\n 10) $cipher_array(10)"
+        puts stdout "\n 11) $cipher_array(11)"
+        puts stdout "\n 12) $cipher_array(12)"
+        puts stdout "\n 13) $cipher_array(13)"
+        puts stdout "\n 14) $cipher_array(14)"
+        puts stdout "\n 15) $cipher_array(15)"
+        puts stdout "\n 16) $cipher_array(16)"
+        puts stdout "\n 17) $cipher_array(17)"
+        puts stdout "\n 18) $cipher_array(18)"
+        puts stdout "\n 19) $cipher_array(19)"
+        puts stdout "\n 20) $cipher_array(20)"
+        
+        set loop true
+	set cipher_attrib {}
+	while {$loop} {        
+		puts stdout "\nClick on Add to add one cipher suite at a time"
+                puts stdout "\nClick on Remove to remove one cipher suite at a time:"
+		puts stdout "\n 1)  Add a cipher suite"
+		puts stdout "\n 2)  Remove a cipher suite"
+		puts stdout "\n 3)  Show current set of chosen cipher suites"
+		puts stdout "\n 4)  Save Current Configuration"
+		puts stdout "\n 5)  Back to Previous Menu"
+		puts stdout "\nYour Choice:"  
+                set subChoice [gets stdin]
+		
+		switch -exact -- $subChoice {
+                        1 { puts stdout "Please enter the number, for example 5, to add that cipher suite"
+                            set userinput [gets stdin]
+			    if {$userinput != {}} {
+                               puts stdout "cipher chosen is $cipher_array($userinput)"
+                               set index [lsearch -exact $cipher_attrib $cipher_array($userinput)]
+                               if {$index == -1} {
+                                  lappend cipher_attrib $cipher_array($userinput)
+                               }   
+                            puts stdout "cipher_attrib is $cipher_attrib"
+			    }
+                          } 
+                        2 { puts stdout "Please enter the number, for example 2, to remove that cipher suite"
+                            set userinput [gets stdin]
+			    if {$userinput != {}} {
+                               puts stdout "$userinput ,remove cipher $cipher_array($userinput)"
+                               set index [lsearch -exact $cipher_attrib $cipher_array($userinput)] 
+                               puts stdout "index=$index"
+                               if {$index >= 0} {
+                                  set new_array [lreplace $cipher_attrib $index $index]
+                               } elseif {$index == -1} {
+			          puts stdout "You are removing a cipher suite that was not added"
+				  set new_array $cipher_attrib
+			       } 
+			                
+			       set cipher_attrib $new_array 
+                               puts stdout "REM cipher_attrib is $cipher_attrib"
+                               puts stdout "REM new_array is $new_array"
+			    }   
+                          }
+			3 { puts stdout "The current set of Ciphers being used are \n$cipher_attrib" }
+			4 { if {[llength $cipher_attrib] != 0} {
+			       set custom_attrib [defineCipherCustomProperty $cipher_attrib] 
+			       puts stdout "custom_attrib=$custom_attrib"
+			       set cipher_attrib {}
+			    }   
+			  }
+			5 { set loop false;  return $custom_attrib}
+                }      
+	}	
+}
+
+   
+proc deleteSSLEntry {sslAlias} {
+        global SSL AdminConfig
+
+	set matchFound 0
+	set sslId {}
+	set sslConfigs [$AdminConfig list SSLConfig]
+        foreach sslId $sslConfigs {
+		set getAlias [$AdminConfig showAttribute $sslId alias]
+		if {[string compare $getAlias $sslAlias] == 0} {
+			set matchFound 1
+			$AdminConfig showall $sslId
+			$AdminConfig remove $sslId
+			$AdminConfig save
+			break
+		}
+        }
+	if {$matchFound == 0} {
+		puts stdout "The alias $sslAlias does not exist in the repository"
+	}
+}
+       
+proc showSSLEntries {} {
+global AdminConfig
+set ssl {}
+   set definedSSL [$AdminConfig list SSLConfig]
+   foreach ssl $definedSSL {
+      puts stdout "$ssl"
+      puts stdout "[$AdminConfig showall $ssl]"
+      puts stdout "********************************************"
+      puts stdout "********************************************"
+                
+   }     
+}
+
+proc showSSLAlias {} {
+	global AdminConfig
+	set ssl {}
+	set definedSSL [$AdminConfig list SSLConfig]
+	puts stdout "******  Availables SSL Configs  ******"
+	foreach ssl $definedSSL {
+		puts stdout "[$AdminConfig showAttribute $ssl alias]"
+	}
+	puts stdout "**************************************"
+}
+
+proc modifySSLEntry {sslAlias} {
+	global AdminConfig
+
+	set listOfSSL [$AdminConfig list SSLConfig]
+	foreach sslId $listOfSSL {
+		set alias [$AdminConfig showAttribute $sslId alias]
+		if { [string compare $alias $sslAlias] == 0} {
+			break
+		}
+	}     
+	set settingId [$AdminConfig showAttribute $sslId setting]
+    
+	set loop true
+		puts stdout "\tModifying SSL Configuration Repertoire for alias $sslAlias"
+		puts stdout "=============================================================="
+		while {$loop} {
+			puts stdout "\nPlease enter your choice from the following menu choices:"
+			puts stdout "\nExisting Values are shown in parentheses."
+			puts stdout "\n 1)  Modify the Key File Name, please specify absolute path name([getSSLSettingAttributes $sslAlias keyFileName])"
+			puts stdout "\n 2)  Modify the Key File Password ([getSSLSettingAttributes $sslAlias keyFilePassword])"
+			puts stdout "\n 3)  Modify the Key File Format ([getSSLSettingAttributes $sslAlias keyFileFormat])"
+			puts stdout "\n 4)  Modify the Trust File Name, please specify absolute path name ([getSSLSettingAttributes $sslAlias trustFileName])"
+			puts stdout "\n 5)  Modify the Trust File Password ([getSSLSettingAttributes $sslAlias trustFilePassword])"
+			puts stdout "\n 6)  Modify the Trust File Format ([getSSLSettingAttributes $sslAlias trustFileFormat])"
+			puts stdout "\n 7)  Modify Client Authentication flag ([getSSLSettingAttributes $sslAlias clientAuthentication])"
+			puts stdout "\n 8)  Modify the Security Level ([getSSLSettingAttributes $sslAlias securityLevel])"
+			puts stdout "\n 9)  Modify the current set of Cipher Suites"
+			puts stdout "\n 10) Modify Crypto Hardware Support flag ([getSSLSettingAttributes $sslAlias enableCryptoHardwareSupport])"
+			puts stdout "\n 11) Modify Additional SSL Properties" 
+			puts stdout "\n 12) Save the Current Configuration"
+			puts stdout "\n 13) Back to the Previous Menu"
+			puts stdout "\n 14) Back to Main Menu"
+			puts stdout "\nYour Choice:"		
+			set subChoice [gets stdin]
+		
+			switch -exact -- $subChoice {
+				1 { 	puts stdout "Modify Key File Name, please specify absolute path"
+					set ssl_keyFileName [gets stdin]
+					if {$ssl_keyFileName != {}} {
+						$AdminConfig modify $settingId [list [list keyFileName $ssl_keyFileName]]
+						set modifiedSSL [$AdminConfig showall $sslId]
+					}
+				}      
+				2 { 	puts stdout "Key File Password"
+					set ssl_keyFilePassword [gets stdin]
+					if {$ssl_keyFilePassword != {}} {
+						$AdminConfig modify $settingId [list [list keyFilePassword $ssl_keyFilePassword]]
+						set modifiedSSL [$AdminConfig showall $sslId]
+						puts stdout "Now ssl=$modifiedSSL"
+					}
+				}
+				3 { 	puts stdout "Key File Format JKS| PKCS12| JCEK"
+					set ssl_keyFileFormat [gets stdin]
+					if {$ssl_keyFileFormat != {}} {
+						$AdminConfig modify $settingId [list [list keyFileFormat $ssl_keyFileFormat]]
+						set modifiedSSL [$AdminConfig showall $sslId]
+						puts stdout "Now ssl=$modifiedSSL"       
+					}
+				}
+				4 { 	puts stdout "Modify the Trust File Name, please specify absolute path"
+					set ssl_trustFileName [gets stdin]
+					if {$ssl_trustFileName != {}} {
+						puts stdout "file=$ssl_trustFileName"
+						$AdminConfig modify $settingId [list [list trustFileName $ssl_trustFileName]]
+						set modifiedSSL [$AdminConfig showall $sslId]
+						puts stdout "Now ssl=$modifiedSSL"
+					}
+				}
+				5 { 	puts stdout "Trust File Password"
+					set ssl_trustFilePassword [gets stdin]
+					if {$ssl_trustFilePassword != {}} {
+						$AdminConfig modify $settingId [list [list trustFilePassword $ssl_trustFilePassword]]
+						set modifiedSSL [$AdminConfig showall $sslId]
+						puts stdout "Now ssl=$modifiedSSL"
+					}
+				}
+				6 { 	puts stdout "Trust File Format JKS| PKCS12| JCEK"
+					set ssl_trustFileFormat [gets stdin]
+					if {$ssl_trustFileFormat != {}} {
+						$AdminConfig modify $settingId [list [list trustFileFormat $ssl_trustFileFormat]]
+						set modifiedSSL [$AdminConfig showall $sslId]
+						puts stdout "Now ssl=$modifiedSSL"
+					}
+				}
+				7 { 	puts stdout "Enable Client Authentication y/n"
+					set userinput [gets stdin]
+					if {$userinput != {}} {
+						if {[regexp $userinput y]} {
+							$AdminConfig modify $settingId [list [list clientAuthentication "true"]]
+						} else {
+							$AdminConfig modify $settingId [list [list clientAuthentication "false"]]
+						}
+						set modifiedSSL [$AdminConfig showall $sslId]
+						puts stdout "Now ssl=$modifiedSSL"
+					}
+				}      	
+				8 { 	puts stdout "Security Level HIGH | MEDIUM | LOW"
+					set userinput [gets stdin]
+					if {$userinput != {}} {
+						$AdminConfig modify $settingId [list [list securityLevel $userinput]]
+						set modifiedSSL [$AdminConfig showall $sslId]
+						puts stdout "Now ssl=$modifiedSSL"
+					}
+				}
+				9 { 	set custom_attrib [displayCipherSuites]
+			    
+					addCipherSuites $settingId $custom_attrib
+				}  
+				10 { 	puts stdout "Enable Crypto Hardware Support y/n"
+					set userinput [gets stdin]
+					if {$userinput != {}} {
+						if {[regexp $userinput y]} {
+							$AdminConfig modify $settingId [list [list enableCryptoHardwareSupport "true"]]
+						} else {
+							$AdminConfig modify $settingId [list [list enableCryptoHardwareSupport "false"]]     				
+						}
+						set modifiedSSL [$AdminConfig showall $sslId]
+						puts stdout "Now ssl=$modifiedSSL"
+					}
+				} 
+				11  { 	additionalSSLProperties $settingId 
+				}        	
+				12  { 	saveConfig
+					set setting_attrib {} 
+				}     
+				13  { 	set loop false; break }
+				14  {	mainMenu }
+		}
+	}    
+}
+
+proc additionalSSLProperties {alias settingId} {
+global AdminConfig
+set loop true
+	puts stdout "\tConfiguring Additional SSL Properties"
+	puts stdout "\nIf you have enabled support for Hardware Crypto Card, then please"
+	puts stdout "define the CryptoGraphic Token Properties"
+	puts stdout "===================================================================="
+	while {$loop} {
+		puts stdout "\nPlease enter your choice from the following menu choices:"
+		puts stdout "Existing Values are shown in parentheses."
+                puts stdout "\n 1)  Configure Cryptographic Token Properties ([getAdditionalSSLAttributes $alias $settingId cryptoHardware])"
+                puts stdout "\n 2)  Configure Custom Properties ([getAdditionalSSLAttributes $alias $settingId properties])"
+		puts stdout "\n 3)  Save Current Configuration"
+		puts stdout "\n 4)  Back to Previous Menu"
+		puts stdout "\nYour Choice:"		
+		set subChoice [gets stdin]
+		                              
+		switch -exact -- $subChoice {
+
+                        1 { 	
+				configureCryptoGraphicToken $settingId
+                          }
+                        2 {                                      
+                            subMenu_CustomProperties $settingId
+                                
+                          }
+			3 { saveConfig}
+			4 { set loop false;break }
+  
+                }
+         }
+}                
+
+proc addSSLEntry {} {
+	global AdminConfig
+	global security_item alias_attrib setting_attrib ssl_entry
+	set alias_attrib {}
+	set setting_attrib {}
+	set custom_attrib {}
+	set ssl_entry {}
+	set createSSL 0
+	set loop true
+	puts stdout "\tConfiguring SSL Repertoire"
+	puts stdout "======================================="
+	while {$loop} {
+		puts stdout "\nPlease enter your choice from the following menu choices:"
+                puts stdout "\nAlias is required. Also, specify properties"
+                puts stdout "\nfor Key File and Trust File."
+		puts stdout "\n 1)  Set Alias, this entry is Required"
+		puts stdout "\n 2)  Set Key File Name, please specify absolute path name(Required)"
+		puts stdout "\n 3)  Set Key File Password(Required)"
+                puts stdout "\n 4)  Set Key File Format(default value is JKS)"
+                puts stdout "\n 5)  Set Trust File Name, please specify absolute path name(Required)"
+		puts stdout "\n 6)  Set Trust File Password(Required)"
+                puts stdout "\n 7)  Set Trust File Format(default value is JKS)"
+                puts stdout "\n 8)  Set Client Authentication"
+		puts stdout "\n 9)  Set Security Level(default value is HIGH)"
+		puts stdout "\n 10) Specify Cipher Suites (overrides the Security Level setting)"
+                puts stdout "\n 11) Set Crypto Hardware Support"
+                puts stdout "\n 12) Save Current Configuration"
+		puts stdout "\n 13) Back to Previous Menu"
+		puts stdout "\n 14) Back to Main Menu"
+		puts stdout "\nYour Choice:"		
+		set subChoice [gets stdin]
+		                              
+		switch -exact -- $subChoice {
+			1 { 	puts stdout "Enter Alias"
+				set userinput [gets stdin]
+				if {$userinput != {}} {
+					set returnCode [validateSSLAlias $userinput]
+					if {$returnCode == 1} {
+						break
+					}
+					set nodeId [$AdminConfig getid /Node:/]
+					set hostname [$AdminConfig showAttribute $nodeId hostName] 
+					set newAlias $hostname/$userinput
+					lappend alias_attrib [list $newAlias]
+				}
+			  }      	
+			2 { 	puts stdout "Enter Key File Name, please specify absolute path"
+				set ssl_keyFileName [gets stdin]
+				if {$ssl_keyFileName != {}} {
+					lappend setting_attrib [list keyFileName $ssl_keyFileName]
+				}
+		          }      
+			3 { 	puts stdout "Key File Password"
+                        	set ssl_keyFilePassword [gets stdin]
+				if {$ssl_keyFilePassword != {}} {
+					lappend setting_attrib [list keyFilePassword $ssl_keyFilePassword]
+				}
+			  }
+                        4 { 	puts stdout "Key File Format JKS| PKCS12| JCEK"
+				set ssl_keyFileFormat [gets stdin]
+				if {$ssl_keyFileFormat != {}} {
+					lappend setting_attrib [list keyFileFormat $ssl_keyFileFormat]
+				}
+				else {
+					lappend setting_attrib [list keyFileFormat "JKS"]
+				}
+			  }
+                        5 { 	puts stdout "Trust File Name, please specify absolute path"
+				set ssl_trustFileName [gets stdin]
+				if {$ssl_trustFileName != {}} {
+					lappend setting_attrib [list trustFileName $ssl_trustFileName]
+				}
+			  }
+                        6 { 	puts stdout "Trust File Password"
+				set ssl_trustFilePassword [gets stdin]
+				if {$ssl_trustFilePassword != {}} {
+					lappend setting_attrib [list trustFilePassword $ssl_trustFilePassword]
+				}
+			  }
+                        7 { 	puts stdout "Trust File Format JKS| PKCS12| JCEK"
+				set ssl_trustFileFormat [gets stdin]
+				if {$ssl_trustFileFormat != {}} {
+					lappend setting_attrib [list trustFileFormat $ssl_trustFileFormat]
+				}
+				else {
+					lappend setting_attrib [list trustFileFormat "JKS"]
+				}
+
+			  }
+                        8 { 	puts stdout "Enable Client Authentication y/n"
+				set userinput [gets stdin]
+				if {$userinput != {}} {
+					if {[regexp $userinput y]} {
+						lappend setting_attrib [list clientAuthentication "true"]
+					} else {
+						lappend setting_attrib [list clientAuthentication "false"]
+					}
+				}
+			  }      	
+                        9 { 	puts stdout "Security Level HIGH | MEDIUM | LOW"
+				set userinput [gets stdin]
+				if {$userinput != {}} {
+					lappend setting_attrib [list securityLevel $userinput]
+				}
+				else {
+					lappend setting_attrib [list securityLevel "HIGH"]
+				}
+
+			  }
+		       10 {   
+				set custom_attrib [displayCipherSuites]
+		          }  
+                       11 { 	puts stdout "Enable Crypto Hardware Support y/n"
+				set userinput [gets stdin]
+				if {$userinput != {}} {
+					if {[regexp $userinput y]} {
+						lappend setting_attrib [list enableCryptoHardwareSupport "true"]
+						
+					} else {
+						lappend setting_attrib [list enableCryptoHardwareSupport "false"]
+					}
+				}
+			   }      	
+
+                        12 {  	if { ($alias_attrib != {}) && ($setting_attrib != {}) } {
+					
+					set ssl_entry [list [list  alias $alias_attrib] [list setting $setting_attrib]]
+						
+					$AdminConfig create SSLConfig $security_item $ssl_entry repertoire
+					puts stdout "SSL Entry created"
+					set listOfSSL [$AdminConfig list SSLConfig]
+					foreach sslId $listOfSSL {
+						set alias [$AdminConfig showAttribute $sslId alias]
+						if {[string compare $alias $newAlias] == 0} {
+							set settingId [$AdminConfig showAttribute $sslId setting]
+							break
+						}
+					}
+					if {$custom_attrib != {}} {
+						addCipherSuites $settingId $custom_attrib
+					}
+					if {[string match [validateSSLPanel $settingId] true]} {
+						puts stdout "validateSSLPanel returned true"
+						$AdminConfig save
+					} 
+					
+					additionalSSLProperties $newAlias $settingId
+					
+				}
+				set alias_attrib {}
+				set setting_attrib {}
+                            }     
+			 13 { 	set loop false;break }
+			 14 {	mainMenu }
+		}
+	}   
+}
+
+
+proc addTrustProperties {parentConfigId} {
+        global AdminConfig
+        
+        set custom_attrib {}
+        
+        set loop true
+	puts stdout "\tAdd Custom Properties"
+	puts stdout "==========================="
+	while {$loop} {
+		puts stdout "\nPlease enter your choice from the following menu choices:"
+		puts stdout "\n 1)  Set Property Name"
+		puts stdout "\n 2)  Set Property Value"
+		puts stdout "\n 3)  Set Property Description"
+                puts stdout "\n 4)  Set Required y/n"
+                puts stdout "\n 5)  Set Validation Expression"
+                puts stdout "\n 6)  Save Current Configuration"
+		puts stdout "\n 7)  Back to Previous Menu"
+		puts stdout "\nYour Choice:"		
+		set subChoice [gets stdin]
+		
+		switch -exact -- $subChoice {
+			1 { 	puts stdout "Enter Property Name"
+				set userinput [gets stdin]
+                                lappend custom_attrib [list name $userinput]
+                          }      	
+                        2 { 	puts stdout "Enter Property Value"
+				set userinput [gets stdin]
+                                lappend custom_attrib [list value $userinput]
+                                
+			  }      	
+                        3 { 	puts stdout "Enter Property Description"
+				set userinput [gets stdin]
+                                lappend custom_attrib [list description $userinput]
+                                
+		          }
+                        4 { 	puts stdout "Enter Property Required y/n"
+		        	set userinput [gets stdin]
+				if {[regexp $userinput y]} {
+					lappend custom_attrib [list required "true"]
+                                        
+				} else {
+					lappend custom_attrib [list required "false"]
+                                        
+			        }
+			  }      	
+                        5 { 	puts stdout "Enter Validation Expression"
+				set userinput [gets stdin]
+                                lappend custom_attrib [list validationExpression $userinput]
+                                
+		          }
+
+                        6 { puts stdout "custom_attrib=$custom_attrib, parentConfigId=$parentConfigId"
+			    
+			    $AdminConfig modify $parentConfigId [list [list trustProperties [list $custom_attrib]]]
+                             
+                          }     
+			7 { set loop false; set custom_attrib {};break }
+         	}
+         }
+}                              
+
+proc showTrustProperties {parentConfigId} {
+global AdminConfig	
+		      
+   set displayProps [$AdminConfig showall $parentConfigId trustProperties]
+   puts stdout "\n$displayProps"	    
+}
+
+proc modifyTrustProperty {propertyName parentConfigId} {
+global AdminConfig
+
+   puts stdout "Property name is $propertyName"
+
+   set propIds [$AdminConfig showAttribute $parentConfigId trustProperties]
+   puts stdout "properties=$propIds,parentConfigId=$parentConfigId"
+   foreach Id $propIds {
+      set propName [$AdminConfig showAttribute $Id name]
+      puts stdout "propName=$propName,propertyName=$propertyName"
+      if {[string compare $propName $propertyName] == 0} {
+         puts stdout "property names match"
+	 set propValue [$AdminConfig showAttribute $Id value]
+	 set propDescription [$AdminConfig showAttribute $Id description]
+	 set propRequired [$AdminConfig showAttribute $Id required]
+	 set propValidationExpression [$AdminConfig showAttribute $Id validationExpression]
+	 puts stdout "The current settings for $propName are: $propName, $propValue, $propDescription, $propRequired, $propValidationExpression"
+	 set prop_attrib {}
+	 set loop true
+	 puts stdout "\tModifying Properties for $propName"
+	 puts stdout "===================================================="
+	 while {$loop} {
+	    puts stdout "\nPlease enter your choice from the following menu choices:"
+	    puts stdout "\n 1)  Modify Property Name"
+	    puts stdout "\n 2)  Modify Property Value"
+	    puts stdout "\n 3)  Modify Property Description"
+	    puts stdout "\n 4)  Modify Required y|n"
+	    puts stdout "\n 5)  Modify Validation Expression"
+	    puts stdout "\n 6)  Save Current Configuration"
+	    puts stdout "\n 7)  Back to Previous Menu"
+	    puts stdout "\nYour Choice:"
+	    set subChoice [gets stdin]
+	    
+            switch -exact -- $subChoice {
+	            1 { puts stdout "Enter new Property Name"
+		        set userinput [gets stdin]
+			lappend  prop_attrib [list name $userinput]
+		      }
+		    2 { puts stdout "Enter new Property Value"
+		        set userinput [gets stdin]
+			lappend prop_attrib [list value $userinput]
+		      }
+		    3 { puts stdout "Enter new Property Description"
+		        set userinput [gets stdin]
+			lappend prop_attrib [list description $userinput]
+		      }
+		    4 { puts stdout "Enter new value for Required y|n"
+		        set userinput [gets stdin]
+			lappend prop_attrib [list required $userinput]
+		      }
+		    5 { puts stdout "Enter new value for Validation Expression"
+		        set userinput [gets stdin]
+			lappend prop_attrib [list validationExpression $userinput]
+		      }
+		    6 { $AdminConfig modify $Id $prop_attrib
+		        $AdminConfig save
+		      }
+		    7 { set loop false; set prop_attrib {}; break}
+		      	  	    	  	 	
+           }
+        }
+      }
+     }
+}     
+
+proc deleteTrustProperty {propertyName parentConfigId} {
+global AdminConfig
+
+   set propIds [lindex [$AdminConfig showAttribute $parentConfigId trustProperties] 0]
+   foreach Id $propIds {
+      set propName [$AdminConfig showAttribute $Id name]
+      puts stdout "propName=$propName,propertyName=$propertyName"
+      if {[string compare $propName $propertyName] == 0} {
+         puts stdout "property names match,remove=$Id"
+	 $AdminConfig remove $Id 
+      }
+   }
+}
+                             
+##########################################################################
+# Duplicate the procedures subMenu_CustomProperties, addCustomProperties, 
+# modifyCustomProperties, showCustomProperties, deleteCustomProperties
+# because the field "Properties" is named "trustProperties" for the
+# TrustAssociation object in the WCCM model
+#########################################################################
+proc subMenu_TrustProperties {parentConfigId} {
+global AdminConfig
+
+        set loop true
+        puts stdout "\tConfiguring Custom Properties"
+        puts stdout "===================================="
+        while {$loop} {
+                puts stdout "\nPlease enter your choice from the following menu choices:"
+                puts stdout "\n 1) Add Custom Properties"
+                puts stdout "\n 2) Show Custom Properties"
+                puts stdout "\n 3) Modify a Custom Property"
+                puts stdout "\n 4) Delete a Custom Property"
+                puts stdout "\n 5) Save Current Configuration"
+                puts stdout "\n 6) Back to Previous Menu"
+                puts stdout "\nYour Choice:"
+                set subChoice [gets stdin]
+                
+                switch -exact -- $subChoice {
+                        1 {
+                             addCustomProperties $parentConfigId
+                              
+                             #$AdminConfig modify $parentConfigId [list [list properties [list $custom_attrib]]]
+			     $AdminConfig showall $parentConfigId
+                          }
+                          
+                        2 { showCustomProperties $parentConfigId}
+                          
+                        3 { puts stdout "Please specify the name of the Custom Property"
+                            set userinput [gets stdin]
+                            puts stdout "The Custom Property specified is $userinput"  
+                            modifyCustomProperty $userinput $parentConfigId
+                          }
+                        4 { puts stdout "Please specify the name of the Custom Property"
+                            set userinput [gets stdin]
+                            deleteCustomProperty $userinput $parentConfigId
+                          }
+                        5 { saveConfig }
+			
+                        6 { set $loop false; break }
+                }
+       }
+} 
+
+proc createTAInterceptor {associationConfigId className} {
+	global AdminConfig
+	
+	lappend attrib [list interceptorClassName $className]
+	$AdminConfig create TAInterceptor $associationConfigId $attrib
+
+}
+
+proc showTAInterceptors {} {
+	global AdminConfig
+	
+	set listOfTAI [$AdminConfig list TAInterceptor]
+	foreach tai $listOfTAI { 
+		set className [$AdminConfig showAttribute $tai interceptorClassName]
+		puts stdout "$className"
+	}     
+
+}
+
+proc modifyTAInterceptor {associationConfigId interceptorClassName} {
+	global AdminConfig
+
+	set matchFound 0
+	set listOfTAI [$AdminConfig list TAInterceptor]
+	foreach tai $listOfTAI {
+		set className [$AdminConfig showAttribute $tai interceptorClassName]
+		if {[string compare $className $interceptorClassName] == 0} {
+			set matchFound 1
+			break
+		}
+	}
+	if {$matchFound == 1} {     
+		set loop true
+		puts stdout "\tModifying Custom Properties for TAI $interceptorClassName"
+		puts stdout "=================================================================="
+		while {$loop} {
+			puts stdout "\nPlease enter your choice from the following menu choices:"
+			puts stdout "\n 1)  Modify the userId ([getJAASAuthDataAttributes $jaasAuthAlias userId])"
+			puts stdout "\n 2)  Modify the password"
+			puts stdout "\n 3)  Modify the description ([getJAASAuthDataAttributes $jaasAuthAlias description])"
+			puts stdout "\n 4)  Save the Current Configuration"
+			puts stdout "\n 5)  Back to the Previous Menu"
+			puts stdout "\nYour Choice:"		
+			set subChoice [gets stdin]
+		
+			switch -exact -- $subChoice {
+				1 { 	puts stdout "Enter the new userId"
+					set userId [gets stdin]
+					if {$userId != {}} {
+						$AdminConfig modify $jaasAuthId [list [list userId $userId]]
+						set modifiedJaasAuth [$AdminConfig showall $jaasAuthId]
+						puts stdout "JAASAuthData for alias $jaasAuthAlias is $modifiedJaasAuth" 
+					}
+				}      
+				2 { 	puts stdout "Enter the new password"
+					set password [gets stdin]	
+					if {$password != {}} {
+						$AdminConfig modify $jaasAuthId [list [list password $password]]
+						set modifiedjaasAuth [$AdminConfig showall $jaasAuthId]
+						puts stdout "JAASAuthData for alias $jaasAuthAlias is $modifiedJaasAuth"
+					}
+				}
+				3 { 	puts stdout "Enter the new description"
+					set description [gets stdin]
+					if {$description != {}} {
+						$AdminConfig modify $jaasAuthId [list [list description $description]]
+						set modifiedJaasAuth [$AdminConfig showall $jaasAuthId]
+						puts stdout "JAASAuthData for alias $jaasAuthAlias is $modifiedJaasAuth"       
+					}
+				}
+				4 {     saveConfig
+					set jaasAuthData [$AdminConfig showall $jaasAuthId]
+					puts stdout "JAASAuthData for alias $jaasAuthAlias is $jaasAuthData"   
+				}     
+				5 { set loop false;break }
+		}
+	}    
+
+   } else {
+      puts stdout "No matching JAASAuth Entry was found for the given alias $jaasAuthAlias"
+   }
+}
+
+
+
+
+
+
+proc deleteTAInterceptor {associationConfigId className} {
+}
+     
+######################################################################################################
+#
+#	Following methods will validate each configuration to see if all the required attributed are
+#	set
+#
+######################################################################################################
+
+proc validateGlobalSecurity {} {
+	global AdminConfig security_item
+	
+	if {[$AdminConfig showAttribute $security_item cacheTimeout] == {}} {
+		puts stdout "Security Cache Timeout needs to be set"
+		return false
+	}
+	if {[$AdminConfig showAttribute $security_item activeAuthMechanism] == {}} {
+		puts stdout "Active Authentication Mechanis needs to be set"
+		return false
+	}
+	if {[$AdminConfig showAttribute $security_item activeProtocol] == {}} {
+		puts stdout "Active Protocol needs to be set"
+		return false
+	}
+	if {[$AdminConfig showAttribute $security_item activeUserRegistry] == {}} {
+		puts stdout "Active User Registry needs to be set"
+		return false
+	}
+	return true 
+}
+
+proc validateLTPA {} {
+	global AdminConfig LTPA
+	
+	if {[$AdminConfig showAttribute $LTPA password] == {}} {
+		puts stdout "LTPA password needs to be set"
+		return false
+	}
+	if {[$AdminConfig showAttribute $LTPA timeout] == {}} {
+		puts stdout "LTPA timeout needs to be set"
+		return false
+	}
+	return true 
+}
+
+proc validateLDAPUserRegistry {} {
+	global AdminConfig ldapUserRegistryId
+	
+	if {[$AdminConfig showAttribute $ldapUserRegistryId serverId] == {}} {
+		puts stdout "LDAP server id needs to be set"
+		return false
+	}
+	if {[$AdminConfig showAttribute $ldapUserRegistryId serverPassword] == {}} {
+		puts stdout "LDAP password needs to be set"
+		return false
+	}
+	if {[$AdminConfig showAttribute $ldapUserRegistryId realm] == {}} {
+		puts stdout "LDAP host and port needs to be set"
+		return false
+	}
+	if {[$AdminConfig showAttribute $ldapUserRegistryId type] == {}} {
+		puts stdout "LDAP Server Type needs to be set"
+		return false
+	}
+        
+	set LDAPDirType [$AdminConfig showAttribute $ldapUserRegistryId type]
+	if {$LDAPDirType == "IBM_DIRECTORY_SERVER"} {
+		if {[$AdminConfig showAttribute $ldapUserRegistryId ignoreCase] == "false"} {
+			return false
+		}
+	}
+
+	return true
+}
+
+proc validateCustomUserRegistry {} {
+	global AdminConfig cusUserRegistry
+	
+	if {[$AdminConfig showAttribute $cusUserRegistry serverId] == {}} {
+		puts stdout "Custom User Registry server id needs to be set"
+		return false
+	}
+	if {[$AdminConfig showAttribute $cusUserRegistry serverPassword] == {}} {
+		puts stdout "Custom User Registry password needs to be set"
+		return false
+	}
+	if {[$AdminConfig showAttribute $cusUserRegistry customRegistryClassName] == {}} {
+		puts stdout "Custom User Registry class name needs to be set"
+		return false
+	}
+	return true 
+}
+proc validateSSLAlias {alias} {
+	global AdminConfig
+	
+	set listSSLConfig [$AdminConfig list SSLConfig]
+	foreach sslConfig $listSSLConfig {
+		set definedAlias [$AdminConfig showAttribute $sslConfig alias]
+		if {[string compare $definedAlias $alias] == 0} {
+			puts stdout "\nThis alias is already defined, please specify a different alias"
+			return 1
+			break
+		}
+	}
+	return 0
+}
+
+
+proc validateSSLPanel {settingId} {
+	global AdminConfig 
+	
+	
+	if {	[$AdminConfig showAttribute $settingId enableCryptoHardwareSupport] == {}} {
+		puts stdout "The CryptoHardwareSupport is not enabled,therefore checking for KeyFiles/TrustFiles"
+		
+		if {[$AdminConfig showAttribute $settingId keyFileName] == {} } {
+			puts stdout "Key File Name needs to be set for SSL Repertoire"
+			return false
+		}
+		if {[$AdminConfig showAttribute $settingId keyFilePassword] == {} } {
+			puts stdout "Key File Password needs to be set for SSL Repertoire"
+			return false
+		}
+		if {[$AdminConfig showAttribute $settingId trustFileName] == {} } {
+			puts stdout "Trust File Name needs to be set for SSL Repertoire"
+			return false
+		}
+		if {[$AdminConfig showAttribute $settingId trustFilePassword] == {} } {
+			puts stdout "Trust File Password needs to be set for SSL Repertoire"
+			return false
+		}
+
+	}
+	return true 
+
+}
+
+proc validateAdditionalSSLPanel {} {
+}
+
+proc validateTAIPanel {} {
+}
+
+proc validateAppLoginAlias {alias} {
+	global AdminConfig
+	
+	set listSSLConfig [$AdminConfig list SSLConfig]
+	foreach sslConfig $listSSLConfig {
+		set definedAlias [$AdminConfig showAttribute $sslConfig alias]
+		if {[string compare $definedAlias $alias] == 0} {
+			puts stdout "\nThis alias is already defined, please specify a different alias"
+			return 1
+			break
+		}
+	}
+	return 0
+}
+
+proc validateAppLoginPanel {} {
+}
+
+proc validateJ2CAuthDataPanel {} {
+}
+		
+proc saveConfig {} {
+	global AdminConfig
+	$AdminConfig save
+}
+
+# store the pointer to the security object
+set security_item [$AdminConfig list Security]
+set LTPA [$AdminConfig list LTPA]
+set SSO [$AdminConfig list SingleSignon]
+set userRegistry [$AdminConfig list UserRegistry]
+set ldapUserRegistryId [$AdminConfig list LDAPUserRegistry]
+set cusUserRegistry [$AdminConfig list CustomUserRegistry]
+set SSL [$AdminConfig list SSLConfig]
+set cryptoHardwareToken [$AdminConfig list CryptoHardwareToken]
+set ldapSearchFilter [$AdminConfig list LDAPSearchFilter]
+
+# initialize the value variable
+set value null
+

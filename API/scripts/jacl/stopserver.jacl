@@ -1,0 +1,10 @@
+# -------------------------------------------------------------------
+# startserver.jacl
+# Syntaxe : startserver <application> <nodeName>
+# Version 1.0 11/07/2006 By S.OUELLET
+# -------------------------------------------------------------------
+set application [lindex $argv 0]
+set nodeName [lindex $argv 1]
+
+catch {$AdminControl stopServer $application $nodeName} result
+puts "$result"

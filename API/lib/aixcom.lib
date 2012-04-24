@@ -1,0 +1,485 @@
+#!/bin/ksh
+# Copyright 2010 XPRESS2PEOPLE
+# File                   : aixcom.lib
+# Created on             : 2010/03/18
+# Family                 : AIX
+# Purpose                : This file contains essentials functions for the administration and the management AIX.
+# Developpers            :
+#   Sylvain Ballaud can be reached at <sylvain.ballaud@x2p.fr>
+#   Simon Ouellet can be reached at <simon.ouellet@x2p.fr>
+# History                :
+#  2010/03/18 (S. Ballaud) Initial version.
+#  2010/09/03 (S. Ballaud) Modifications about the name of functions.
+
+# 1) Function               : get_aix_curuser
+# 1) Purpose                : Verify that the script runs with the specified user. 
+# 1) Notes                  : Nothing. 
+# 1) Version                : 1.1
+# 1) Syntax                 : get_aix_curuser <username>
+# 1) Optionals Parameters   : Nothing
+# 1) Mandatories Parameters : <username>
+# 1) Example                : get_aix_curuser toto 
+# 1) Return                 : 0=Same User or 1=Bad user.
+# 1) History                :
+#  2010/03/18 (S. Ballaud) Initial version.
+function get_aix_curuser
+{
+	# Est ce que l'utilisateur specifie est l'utilisateur courant ?
+	if [[ ${1} == $(whoami) ]]
+	then 
+                # Oui alors on retourne 0
+		return 0
+	else
+                # Non alors on retourne 1
+		return 1
+	fi
+}
+
+# 2) Function               : chk_aix_osver 
+# 2) Purpose                : Verify the OS version 
+# 2) Notes                  : Nothing.  
+# 2) Version                : 1.1
+# 2) Syntax                 : chk_aix_osver <version>
+# 2) Optionals Parameters   : Nothing
+# 2) Mandatories Parameters : <version : major_version.minor_version> 
+# 2) Example                : chk_aix_osver 4.3 
+# 2) Return                 : 0=Good version, 1=Mayor version good but not the minor or 2=Different version 
+# 2) History                : 
+#  2010/03/19 (S. Ballaud) Initial version.
+function chk_aix_osver
+{
+	# Affectation de la version de l'OS reçu dans une variable
+	version_os_receipt=${1}
+	
+	# Extraction de la version majeur du parametre recu 
+	mayor_receipt=$(echo ${version_os_receipt} | awk -F "." '{print $1}')
+
+	# Extraction de la version mineure du parametre recu
+	minor_receipt=$(echo ${version_os_receipt} | awk -F "." '{print $2}')
+
+	# Affectation de la version de l'OS courant dans une variable
+	version_os_current=$(oslevel)
+
+	# Extraction de la version majeur de l'OS courant  
+	mayor_current=$(echo ${version_os_current} | awk -F "." '{print $1}')
+
+	# Extraction de la version mineure de l'OS courant 
+	minor_current=$(echo ${version_os_current} | awk -F "." '{print $2}')
+
+	# Est ce que les version majeures sont identiques ?	
+	if [[ ${mayor_current} -eq ${mayor_receipt} ]]
+	then
+		# Oui alors est ce que les version mineures sont identiques ?
+		if [[ ${minor_current} -eq ${minor_receipt} ]]
+		then
+			# Oui donc on retourne 0
+			return 0
+		else
+			# Non donc on retourne 1
+			return 1
+		fi
+	else
+		# Non donc on retourne 2 
+		return 2
+	fi 	
+}
+
+# 3) Function               : clean_aix_wtmp 
+# 3) Purpose 1              : Flush the wtmp file.
+# 3) Purpose 2              : Create a file text with all lines of wtmp file except those in touch with Zabbix.
+# 3) Purpose 3              : Keep only a number of lines which are passed in parameter in the file wtmp.txt.  
+# 3) Notes                  : You must be root to execute this function.  
+# 3) Version                : 1.0
+# 3) Syntax                 : clean_aix_wtmp <nb_lines_keep> 
+# 3) Optionals Parameters   : Nothing
+# 3) Mandatories Parameters : <nb_lines_keep> 
+# 3) Example                : clean_aix_wtmp 1000 
+# 3) Return                 : 0=File wtmp flush and file wtmp.txt unchanged, 1=File wtmp flush and file wtmp.txt truncated or 2=File wtmp not flush
+# 3) History                : 
+#  2010/03/19 (S. Ballaud) Initial version.
+function clean_aix_wtmp
+{
+	# Affectation du nombre de lignes que l'on veut garder dans une variable
+	nb_lines_keep=${1} 
+
+	# Redirection de toutes les lignes ne contenant pas zabbix depuis le fichier wtmp vers le fichier wtmp.txt  
+	/usr/sbin/acct/fwtmp < /var/adm/wtmp | grep -v "zabbix" >> /var/adm/wtmp.txt
+
+	# Remise à 0 du fichier wtmp
+	cat /dev/null > /var/adm/wtmp		
+
+	# Est ce que l'operation s'est correctement effectuee
+	if [[ ${?} -eq 1 ]]
+	then
+		# Non donc on retourne 2
+		return 2
+	fi
+
+	# Nombre de lignes du fichier /var/adm/wtmp.txt
+	nb_lines_wtmp_file=$(wc -l /var/adm/wtmp.txt | awk '{print $1}')
+	
+	# Est ce que l'on a atteint la limite en nombre de lignes du fichier wtmp ?
+	if [[ ${nb_lines_wtmp_file} -gt ${nb_lines_keep} ]]
+	then
+		# Oui alors on garde uniquement les nb_line_keep dernières lignes  
+		tail -n ${nb_lines_keep} /var/adm/wtmp.txt | tee /var/adm/wtmp.txt > /dev/null
+		
+		# On retourne 1
+		return 1				
+	else
+		# Non donc on retourne 0
+		return 0
+	fi
+}
+
+# 4) Function               : ins_aix_rpm
+# 4) Purpose                : Install a RPM package
+# 4) Notes                  : You must be root to execute this function.  
+# 4) Version                : 4.0r91
+# 4) Syntax                 : ins_aix_rpm <package.rpm> [parameters rpm]
+# 4) Optionals Parameters   : [4 parameters rpm max.] 
+# 4) Mandatories Parameters : <package rpm> 
+# 4) Example                : ins_aix_rpm coreutils-8.5-2.aix5.1.ppc.rpm
+# 4) Return                 : 0=install successfull, 1=rpm binary not found, 2=Package rpm file not found and 3=Requirement missing
+# 4) History                : 
+#  2010/08/26 (S. Ouellet) Initial version. Response to ticket #25 (http://trac.x2p.fr/API/ticket/25)
+#  2010/08/30 (S. Ouellet) Modify rc when a package is already install. Considering it as a none fatal error and continue.
+ins_aix_rpm() {
+ ## Check if rpm binary exist and it's an appropriate version
+ _rpm_bin=`which rpm` > /dev/null 2>&1
+ if [[ $? -ne 0 ]]; then
+  /usr/bin/rpm --version > /dev/null 2>&1
+  if [[ $? -ne 0 ]]; then
+   _rpm_bin="/usr/bin/rpm"
+   echo "Error. rpm binary not found." 
+   return 1
+  fi
+ fi
+ ## Check if rpm package exist
+ if [[ ! -f ${1} ]]; then 
+  echo "Error. Package specified not found. Please check : ${1}" 
+  return 2
+ fi
+ ## Check if package requierement
+ _rc=0; _out=`${_rpm_bin} -ivh --test ${1} ${2} 2>&1`;_rc=$?
+ if [[ `echo ${_out} | egrep "is already installed" | wc -l` -eq 1 ]]; then return 0; echo "${_out}" ;fi ## if package is allready install, reset RC cause it's not a fatal error
+ if [[ ${_rc} -ne 0 ]]; then
+  echo "Error. Misssing requierment."
+  echo "Please check it with ${_rpm_bin} -ivh --test ${1}" 
+  return 3
+ fi
+ ## Install package
+ ${_rpm_bin} -ivh ${@}
+ return $?
+}
+
+# 5) Function               : get_aix_processstatus 
+# 5) Purpose                : Get the status of one process.
+# 5) Notes                  : You must specify the PID or the name of the process.  
+# 5) Version                : 1.4
+# 5) Syntax                 : get_aix_processtatus <PID or string of research>  
+# 5) Optionals Parameters   : Nothing 
+# 5) Mandatories Parameters : <PID or string of research> 
+# 5) Example 1              : get_aix_processstatus 1432 
+# 5) Example 2              : get_aix_processstatus oracle  
+# 5) Return                 : 0=Process found, 1=Process not found or 2=There is more than one process found  
+# 5) History                : 
+#  2010/09/01 (S. Ballaud) Initial version.
+#  2010/09/09 (S. Ballaud) Modification about the return value
+function get_aix_processstatus 
+{
+	# Recuperation du parametre
+	process=${1}
+	
+	# S'agit-il d'un PID ou d'une chaine de recherche ?
+	if [[ -z $(echo ${process} | sed s/[0-9]*//) ]]
+	then
+		# Recherche du PID
+		pid=$(ps -T ${process})
+
+		# Connaitre le nombre de resultat obtenu
+		nb_resultat=$(echo "${pid}" | wc -l)
+
+		# Y'a t-il des resultats ? 	
+		if [[ ${nb_resultat} -eq 1 ]]
+		then
+			# Non donc aucune processus trouve
+			return 1
+		else
+			# Oui mais combien y'a t-il de processus correspondant ? 
+			if [[ ${nb_resultat} -eq 2 ]]
+			then
+				# Un processus trouve
+				return 0
+			else
+				# Plusieurs processus trouves
+				return 2
+			fi
+		fi
+	else
+		# Recherche de la chaine 
+		string=$(ps aux | grep ${process} | grep -v grep)
+
+		# Connaitre le nombre de resultat obtenu
+                nb_resultat=$(echo "${string}" | wc -l)
+        
+	        # Y'a t-il des resultats ?
+                if [[ ${string} == "" ]]
+                then
+                        # Non donc aucune processus trouve
+                        return 1
+                else
+                        # Oui mais combien y'a t-il de processus correspondant ?
+                        if [[ ${nb_resultat} -eq 1 ]]
+                        then
+                                # Un processus trouve
+                                return 0
+                        else
+                                # Plusieurs processus trouves
+                                return 2
+                        fi
+                fi
+	fi
+} 	
+
+# 6) Function               : get_aix_newuid
+# 6) Purpose                : Get a new ID for a user in a specific range.
+# 6) Notes                  : Configure the path of the api in the file conf/api.conf. The result is print on stdout.
+# 6) Version                : 1.1
+# 6) Syntax                 : get_aix_newuid <begin_range_uid> <end_range_uid>
+# 6) Optionals Parameters   : Nothing
+# 6) Mandatories Parameters : <begin_range_uid> and <end_range_uid>
+# 6) Example                : get_aix_newuid 200 400
+# 6) Return                 : 0=success or 1=failed.
+# 6) History                :
+#  2010/09/02 (S. Ballaud) : Initial version.
+#  2010/10/06 (S. Ballaud) : Add the mandatories parameters
+function get_aix_newuid
+{
+        # Declaration des variables
+        begin_range_uid=${1}
+        end_range_uid=${2}
+        new_uid=${begin_range_uid}
+        fichier_uid="${APIHOME}/conf/refuidtab"
+
+        # On explore la plage d'UID
+        while (( ${new_uid} <= ${end_range_uid} ))
+        do
+                # Drapeau indique que l'UID que l'on veut utiliser n'est pas dans le fichier
+                use=0
+
+                # Exploration de chaque ligne du fichier
+                while read line
+                do
+                        # Capture du 2ieme champ du fichier contenant l'UID de l'utilisateur
+                        uid=$(echo "${line}" | awk -F ':' '{print $2}')
+
+                        # Est ce que l'UID est identique à celui que l'on veut utiliser ?
+                        if [[ ${uid} -eq ${new_uid} ]]
+                        then
+                                # Oui donc on l'indique
+				use=1
+                        fi
+
+                done < ${fichier_uid}
+
+                # Est ce que cet UID est utilisé ?
+                if [[ ${use} -eq 0 ]]
+                then
+                        # Non donc on l'utilise et on quitte la fonction
+                        echo ${new_uid}
+                        return 0
+                fi
+
+                # Incrementation de l'index
+                new_uid=$((new_uid+1))
+        done
+
+        # Aucun UID n'est libre dans la plage definie
+        return 1
+}			
+
+# 7) Function               : get_aix_newgid
+# 7) Purpose                : Get a new ID for a group in a specific range.
+# 7) Notes                  : Configure the path of the api in the file conf/api.conf. The result is print on stdout.
+# 7) Version                : 1.1
+# 7) Syntax                 : get_aix_newgid <begin_range_gid> <end_range_gid>
+# 7) Optionals Parameters   : Nothing
+# 7) Mandatories Parameters : <begin_range_gid> and <end_range_gid>
+# 7) Example                : get_aix_newgid 500 550
+# 7) Return                 : 0=success or 1=failed.
+# 7) History                :
+#  2010/09/02 (S.Ballaud) : Initial version.
+function get_aix_newgid
+{
+        # Declaration des variables
+        begin_range_gid=${1}
+        end_range_gid=${2}
+        new_gid=${begin_range_gid}
+        fichier_gid="${APIHOME}/conf/refgidtab"
+
+        # On explore la plage d'GID entre 200 et 400
+        while (( ${new_gid} <= ${end_range_gid} ))
+        do
+                # Drapeau indique que l'GID que l'on veut utiliser n'est pas dans le fichier
+                use=0
+
+                # Exploration de chaque ligne du fichier
+                while read line
+                do
+                        # Capture du 2ieme champ du fichier contenant le GID de l'utilisateur
+                        gid=$(echo "${line}" | awk -F ':' '{print $2}')
+
+                        # Est ce que le GID est identique à celui que l'on veut utiliser ?
+                        if [[ ${gid} -eq ${new_gid} ]]
+                        then
+                                # Oui donc on l'indique
+                                use=1
+                        fi
+
+                done < ${fichier_gid}
+
+                # Est ce que cet GID est utilisé ?
+                if [[ ${use} -eq 0 ]]
+                then
+                        # Non donc on l'utilise et on quitte la fonction
+                        echo ${new_gid}
+                        return 0
+                fi
+
+                # Incrementation de l'index
+                new_gid=$((new_gid+1))
+        done
+
+        # Aucun GID n'est libre dans la plage predefinie
+        return 1
+}
+
+# 8) Function               : search_aix_uid
+# 8) Purpose                : Search the UID of a specific user.
+# 8) Notes                  : Configure the path of the api in the file conf/api.conf. The result is print on stdout.
+# 8) Version                : 2.1
+# 8) Syntax                 : search_aix_uid <user>
+# 8) Optionals Parameters   : Nothing
+# 8) Mandatories Parameters : <user>
+# 8) Example                : search_aix_uid oracle
+# 8) Return                 : 0=success or 1=failed.
+# 8) History                :
+#  2010/09/02 (S.Ballaud) : Initial version.
+function search_aix_uid
+{
+        # Declaration de variables
+        user=${1}
+        fichier_uid="${APIHOME}/conf/refuidtab"
+
+        # Exploration de chaque ligne du fichier
+        while read line
+        do
+                # Capture du 1er champ du fichier contenant l'UID de l'utilisateur
+                search_user=$(echo "${line}" | awk -F ':' '{print $1}')
+
+                # Est ce que l'utilisateur est celui recherche ?
+                if [[ ${search_user} = ${user} ]]
+                then
+                        # Oui donc on cherche l'UID
+                        search_uid=$(echo "${line}" | awk -F ':' '{print $2}')
+
+                        # On retourne l'UID et on quitte la fonction
+                        echo ${search_uid}
+                        return 0
+                fi
+
+        done < ${fichier_uid}
+
+        # L'utilisateur n'est pas repertorie dans le fichier
+        return 1
+}
+
+# 9) Function               : search_aix_gid
+# 9) Purpose                : Search the GID of a specific group.
+# 9) Notes                  : Configure the path of the api in the file conf/api.conf. The result is print on stdout.
+# 9) Version                : 2.1
+# 9) Syntax                 : search_aix_gid <group>
+# 9) Optionals Parameters   : Nothing
+# 9) Mandatories Parameters : <group>
+# 9) Example                : search_aix_gid dba
+# 9) Return                 : 0=success or 1=failed.
+# 9) History                :
+#  2010/09/02 (S.Ballaud) : Initial version.
+function search_aix_gid
+{
+        # Declaration de variables
+        user=${1}
+        fichier_gid="${APIHOME}/conf/refgidtab"
+
+        # Exploration de chaque ligne du fichier
+        while read line
+        do
+                # Capture du 1er champ du fichier contenant le GID de l'utilisateur
+                search_user=$(echo "${line}" | awk -F ':' '{print $1}')
+
+                # Est ce que l'utilisateur est celui recherche ?
+                if [[ ${search_user} = ${user} ]]
+                then
+                        # Oui donc on cherche le GID
+                        search_gid=$(echo "${line}" | awk -F ':' '{print $2}')
+
+                        # On retourne l'GID et on quitte la fonction
+                        echo ${search_gid}
+                        return 0
+                fi
+
+        done < ${fichier_gid}
+
+        # L'utilisateur n'est pas repertorie dans le fichier
+        return 1
+}
+
+# 10) Function               : get_aix_fsfromvg
+# 10) Purpose                : List file systems for one volume group
+# 10) Notes                  : Nothing
+# 10) Version                : 4.0
+# 10) Syntax                 : get_aix_fsfromvg <volume_group>
+# 10) Optionals Parameters   : Nothing
+# 10) Mandatories Parameters : <volume_group>
+# 10) Example                : get_aix_fsfromvg datavg
+# 10) Return                 : 0=ok, !0=KO
+# 10) History                :
+#  2010/10/18 (S. Ouellet) Initial version.
+get_aix_fsfromvg() {
+ lsvg -l ${1} | egrep -v "MOUNT|N\/A|${1}" | awk '{print $7}' 
+}
+
+# 11) Function               : get_aix_vglistnorootvg
+# 11) Purpose                : List all volume groups without rootvg
+# 11) Notes                  : Nothing 
+# 11) Version                : 4.0
+# 11) Syntax                 : get_aix_vglistnorootvg
+# 11) Optionals Parameters   : Nothing
+# 11) Mandatories Parameters : Nothing
+# 11) Example                : get_aix_vglistnorootvg
+# 11) Return                 : 0=ok, !0=KO
+# 11) History                :
+#  2010/10/18 (S. Ouellet) Initial version.
+get_aix_vglistnorootvg() {
+ lsvg -o | grep -v rootvg
+}
+
+# 12) Function               : get_aix_allfsnorootvg  
+# 12) Purpose                : List all file systems of all volume groupe except rootvg 
+# 12) Notes                  : Nothing 
+# 12) Version                : 4.0
+# 12) Syntax                 : get_aix_allfsnorootvg 
+# 12) Optionals Parameters   : Nothing
+# 12) Mandatories Parameters : Nothing
+# 12) Example                : get_aix_allfsnorootvg 
+# 12) Return                 : 0=ok, !0=KO
+# 12) History                :
+#  2010/10/18 (S. Ouellet) Initial version.
+#  2010/10/22 (S. Ballaud) Correction about in the for loop
+get_aix_allfsnorootvg() {
+for _vg in $(get_aix_vglistnorootvg)
+do
+ get_aix_fsfromvg ${_vg}
+done
+}

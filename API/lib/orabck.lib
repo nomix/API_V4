@@ -1,0 +1,252 @@
+#!/bin/ksh
+# Copyright 2010 XPRESS2PEOPLE
+# File                   : orabck.lib
+# Created on             : 2010/03/18
+# Family                 : ORACLE
+# Purpose                : This file contains backup and restore Oracle related functions
+# Developpers            :
+#   Simon Ouellet can be reached at <simon.ouellet@x2p.fr>
+#   Benoit Garcia can be reached at <benoit.garcia@x2p.fr>
+# History                :
+#  2009/07/16 (B. Garcia) Initial version from oracomlib.fnc by Simon Ouellet.
+#  2010/03/18 (S. Ouellet) Creation of orabck.lib and backup functions importation from oracle.lib
+#  2010/08/25 (B. Garcia) Import ora_rman_script & ora_dba_rman_script from oracle.lib
+#  2010/09/03 (S. Ballaud) Modifications about the name of functions.
+#  2011/11/21 (J. Alarcon) Creation of catalog functions and reporting functions.
+
+## Variable declaration ##
+###############################################
+#### CHECK IF api.conf have been sourced ######
+if [[ -z ${APIHOME} ]];
+then
+ echo "*************************************************************"
+ echo "WARNING! api.conf have not been source\nPlease source it : . API_PATH/conf/api.conf"
+ echo "*************************************************************"
+fi
+###############################################
+. ${APIHOME}/conf/oracle.conf
+
+## Function declaration ##
+
+# 1) Function               : export_ora_schema
+# 1) Purpose                : export a schema.
+# 1) Notes                  : ORACLE_HOME & ORACLE_SID must be set. User must be member of the dba group.
+# 1) Version                : 4.0
+# 1) Syntax                 : export_ora_schema <schema_name>
+# 1) Optionals Parameters   : Nothing
+# 1) Mandatories Parameters : <schema_name>
+# 1) Example                : export_ora_schema schema.dmp
+# 1) Return                 : 0 if the query succeed; exp return code otherwise.
+# 1) History                :
+#   2009/08/21 (B. Garcia) Initial version from orabcklib.fnc by S. Ouellet.
+export_ora_schema() {
+  if [[ -z $1 ]]; then    # check if argument has been given.
+    print_api_stdoutd "Error: Bad usage of export_ora_schema (no schema given)"
+    return -1
+  else
+    print_api_stdoutd "Will export scheman ${1} from ${ORACLE_SID}."                        >>${AP2_VLOGFILE}
+    # get NLS settings to avoid conversion.
+    _charset=`soquerydba "select value from nls_database_parameters where parameter = 'NLS_CHARACTERSET'"`
+    _language=`soquerydba "select value from nls_database_parameters where parameter = 'NLS_LANGUAGE'"`
+    _territory=`soquerydba "select value from nls_database_parameters where parameter = 'NLS_TERRITORY'"`
+    export NLS_LANG=${_language}_${_territory}.${_charset}
+    # run exp
+    ${ORACLE_HOME}/bin/exp USERID=\"/ AS SYSDBA\" CONSISTENT=Y DIRECT=N FULL=N \
+    OWNER=${1}                                                                 \
+    FILE=${ORACLE_SID}_export_sch-${1}_`date ${AP2_STRINGDATEFORMAT}`.dmp      \
+    LOG=${ORACLE_SID}_export_sch-${1}_`date ${AP2_STRINGDATEFORMAT}`.log
+    return $?
+  fi
+}
+# export_ora_schema end
+
+# 2) Function               : run_ora_rmanscript
+# 2) Purpose                : run an rman script.
+# 2) Notes                  : ORACLE_HOME & ORACLE_SID must be set. User must be member of the dba group.
+# 2) Version                : 1.0
+# 2) Syntax                 : run_ora_rmanscript <script>
+# 2) Optionals Parameters   : Nothing
+# 2) Mandatories Parameters : <script>
+# 2) Example                : run_ora_rmanscript script.rman
+# 2) Return                 : 0 if the query succeed; rman return code otherwise.
+# 2) History                :
+#   2009/07/16 (B. Garcia) Initial version from oracomlib.fnc by S. Ouellet.
+run_ora_rmanscript() {
+  if [[ -z $1 ]]; then    # check if argument has been given.
+    print_api_stdoutd "Error: Bad usage of run_ora_rmanScript (no script given)"
+    return -1
+  else
+    if [[ ! -f $1 ]]; then    # check if specified script exists.
+      print_api_stdoutd "Eror: Bad usage of run_ora_rmanScript (script ${1} doesn't exist)"
+      return -2
+    else
+      print_api_stdoutd "Will run ${1} on database ${ORACLE_SID}" >>${AP2_VLOGFILE}
+      
+      # run the script
+      ${ORACLE_HOME}/bin/rman TARGET /<<EOS
+@${1}
+EOS
+      return $?
+    fi
+  fi
+}
+
+
+# 3) Function               : run_ora_rmanscriptdba
+# 3) Purpose                : run an rman script.
+# 3) Notes                  : ORACLE_HOME & ORACLE_SID must be set. User must be member of the dba group.
+# 3) Version                : 1.0
+# 3) Syntax                 : run_ora_rmanscriptdba <script>
+# 3) Optionals Parameters   : Nothing
+# 3) Mandatories Parameters : <script>
+# 3) Example                : run_ora_rmanscriptdba script.rman
+# 3) Return                 : 0 if the query succeed; rman return code otherwise.
+# 3) History                :
+#   2009/07/16 (B. Garcia) Initial version from oracomlib.fnc by S. Ouellet.
+run_ora_rmanscriptdba() {
+# connection to rman must be done as sysdba.
+  run_ora_rmanscript $@
+}
+# run_ora_rmanscriptdba end
+
+# 4) Function               : run_ora_rmanscript_with_catalog
+# 4) Purpose                : run an rman script with possibleconnection to a recovery catalog.
+# 4) Notes                  : ORACLE_HOME & ORACLE_SID must be set. User must be member of the dba group. The file ${APIHOME}/conf/connect_catalog.conf must exists and be completed if USE_RMAN_CATALOG is YES. 
+# 4) Version                : 1.0
+# 4) Syntax                 : run_ora_rmanscript_with_catalog <script>
+# 4) Optionals Parameters   : Nothing
+# 4) Mandatories Parameters : <script>
+# 4) Example                : run_ora_rmanscript_with_catalog script.rman
+# 4) Return                 : 0 if the query succeed; rman return code otherwise.
+# 4) History                :
+#   2011/11/21 (J. Alarcon) Initial version from run_ora_rmanscript by B. Garcia.
+run_ora_rmanscript_with_catalog() {
+  if [[ -z $1 ]]; then    # check if argument has been given.
+    print_api_stdoutd "Error: Bad usage of run_ora_rmanscript_with_catalog (no script given)"
+    return -1
+  else
+    if [[ ! -f $1 ]]; then    # check if specified script exists.
+      print_api_stdoutd "Eror: Bad usage of run_ora_rmanscript_with_catalog (script ${1} doesn't exist)"
+      return -2
+    else
+      print_api_stdoutd "Will run ${1} on database ${ORACLE_SID}" >>${AP2_VLOGFILE}
+      # run the script, with recovery catalog connection if needed.
+      if [ "${USE_RMAN_CATALOG}" == "YES" ] ; then
+      	${ORACLE_HOME}/bin/rman TARGET /<<EOS
+@${APIHOME}/scripts/rman/connect_catalog.rman
+@${1}
+EOS
+      else
+	${ORACLE_HOME}/bin/rman TARGET /<<EOS
+@${1}
+EOS
+      fi
+      return $?
+    fi
+  fi
+}
+
+# 5) Function               : report_rman 
+# 5) Purpose                : Display custom report about RMAN.
+# 5) Notes                  : ORACLE_HOME & ORACLE_SID must be set. User must be member of the dba group. The file ${APIHOME}/conf/connect_catalog.conf must exists and be completed if USE_RMAN_CATALOG is YES.
+# 5) Version                : 1.0
+# 5) Syntax                 : report_rman <type>
+# 5) Optionals Parameters   : Nothing
+# 5) Mandatories Parameters : <type> (all | incarnation | backup | archivelog | conf)
+# 5) Example                : report_rman backup 
+# 5) Return                 : 0 if the query succeed; rman return code otherwise.
+# 5) History                :
+#   2011/11/21 (J. Alarcon) Initial version.
+report_rman() {
+  typeset -u report_type
+  if [[ -z $1 ]]; then    # check if argument has been given.
+    print_api_stdoutd "Error: Bad usage of report_rman (no type given)"
+    return -1
+  else
+      report_type="$1"
+      report_script=
+      case $report_type in
+	"ALL")
+	report_script="${APIHOME}/scripts/rman/list_all.rman"
+	;;
+	"BACKUP")
+	report_script="${APIHOME}/scripts/rman/list_backup.rman"
+	;;
+	"ARCHIVELOG")
+	report_script="${APIHOME}/scripts/rman/list_archivelog.rman"
+	;;
+	"INCARNATION")
+	report_script="${APIHOME}/scripts/rman/list_incarnation.rman"
+	;;
+	"CONF")
+	report_script="${APIHOME}/scripts/rman/show_configuration.rman"
+	;;
+	*)
+	print_api_stdoutd "Error: Bad usage of report_rman"
+        return -2
+      esac
+      # run the script, with possible recovery catalog connection.
+      
+	run_ora_rmanscript_with_catalog "$report_script"
+
+	return $?
+  fi
+}
+
+# 6) Function               : delete_rman_obsolete
+# 6) Purpose                : Delete the obsolete backup from disk and rman.
+# 6) Notes                  : ORACLE_HOME & ORACLE_SID must be set. User must be member of the dba group. The file ${APIHOME}/scripts/rman/connect_catalog.rman must exists and be completed if USE_RMAN_CATALOG is YES.
+# 6) Version                : 1.0
+# 6) Syntax                 : delete_rman_obsolete
+# 6) Optionals Parameters   : Nothing
+# 6) Mandatories Parameters : Nothing 
+# 6) Example                : delete_rman_obsolete
+# 6) Return                 : 0 if the query succeed; rman return code otherwise.
+# 6) History                :
+#   2011/11/21 (J. Alarcon) Initial version.
+delete_rman_obsolete() {
+    # run the script, with possible recovery catalog connection.
+    
+    run_ora_rmanscript_with_catalog "${APIHOME}/scripts/rman/delete_obsolete.rman"
+
+    return $?
+}
+
+# 7) Function               : crosscheck_rman
+# 7) Purpose                : Crosscheck RMAN with the disk backup.
+# 7) Notes                  : ORACLE_HOME & ORACLE_SID must be set. User must be member of the dba group. The file ${APIHOME}/scripts/rman/connect_catalog.rman must exists and be completed if USE_RMAN_CATALOG is YES..
+# 7) Version                : 1.0
+# 7) Syntax                 : crosscheck_rman 
+# 7) Optionals Parameters   : Nothing
+# 7) Mandatories Parameters : Nothing
+# 7) Example                : crosscheck_rman
+# 7) Return                 : 0 if the query succeed; rman return code otherwise.
+# 7) History                :
+#   2011/11/21 (J. Alarcon) Initial version.
+crosscheck_rman() {
+    # run the script, with possible recovery catalog connection.
+
+    run_ora_rmanscript_with_catalog "${APIHOME}/scripts/rman/crosscheck.rman"
+
+    return $?
+}
+
+# 8) Function               : delete_rman_expired
+# 8) Purpose                : Delete the expired backup and archivelog from RMAN.
+# 8) Notes                  : ORACLE_HOME & ORACLE_SID must be set. User must be member of the dba group. The file ${APIHOME}/scripts/rman/connect_catalog.rman must exists and be completed if USE_RMAN_CATALOG is YES..
+# 8) Version                : 1.0
+# 8) Syntax                 : delete_rman_expired 
+# 8) Optionals Parameters   : Nothing
+# 8) Mandatories Parameters : Nothing
+# 8) Example                : delete_rman_expired
+# 8) Return                 : 0 if the query succeed; rman return code otherwise.
+# 8) History                :
+#   2011/11/21 (J. Alarcon) Initial version.
+delete_rman_expired() {
+    # run the script, with possible recovery catalog connection.
+
+    run_ora_rmanscript_with_catalog "${APIHOME}/scripts/rman/delete_expired.rman"
+
+    return $?
+}
+

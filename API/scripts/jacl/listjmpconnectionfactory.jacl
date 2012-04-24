@@ -1,0 +1,2 @@
+set ljf [$AdminConfig list JMSConnectionFactory]
+puts $ljf

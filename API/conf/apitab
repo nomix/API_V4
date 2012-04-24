@@ -1,0 +1,6 @@
+api:api.conf
+ora:oracle.conf
+was:was.conf
+aix:none
+unx:none
+eai:eai.conf

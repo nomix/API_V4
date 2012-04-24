@@ -1,0 +1,60 @@
+##################################################################### 
+# Script name = disableHamOnProcess.pty 
+##################################################################### 
+
+def getHAMServiceOnAll():     
+    # obtenir la liste de tous les objets HAManagerService de la cellule.     
+    processes = AdminConfig.list("HAManagerService").split("\n")     
+    rc = []     
+    for p in processes:         
+        p = p.strip()        
+        rc.append(p)
+    return rc
+
+# HAManagerService NomObjet a le format suivant
+#cells/nom_cellule/nodes/nom_noeud/servers/nom_serveur:hamanagerservice.xml
+
+def getNodeName(service):
+    # Le 4ème élément du nom de service séparé par une barre oblique (/) correspond au nom de noeud
+    n = service.split("/")[3]
+    return n
+
+def getProcessName(service):
+    # Le 6ème élément du nom de service séparé par une barre oblique (/) correspond au nom de processus
+    p = service.split("/")[5]
+    return p.split("|")[0]
+
+def printHelp():
+    print "This script disables the HA Manager on a specific process"
+    print "Format is disableHamOnProcess nodeName processName"
+
+##################################
+# main
+#################################
+if (len(sys.argv) > 1) :
+    # obtenir le nom de noeud et le nom de processus à partir de la ligne de commande
+    nodeName = sys.argv[0]
+    processName = sys.argv[1]
+    # obtenir la liste de tous les objets HAManagerService de la cellule.
+    processes = getHAMServiceOnAll()
+    for p in processes:
+        # debug
+        #print "Checking process "+p
+        # Rechercher un nom de noeud correspondant.
+        n = getNodeName(p)
+        print n,nodeName
+        if (nodeName == n):
+            # correspondances de noms de noeud, rechercher un nom de serveur correspondant
+            pn = getProcessName(p)
+            print pn,processName
+            if (pn == processName or processName == "all"):
+                # les noms de noeud et de processus correspondent. Celui recherché
+                # a été trouvé. Désactivez-le et quittez.
+                print "Disabling the HA Manager on process ",
+                print p
+                #AdminConfig.modify(p, [["enable", "false"]])
+                #AdminConfig.save()
+                break
+else:
+    printHelp()
+

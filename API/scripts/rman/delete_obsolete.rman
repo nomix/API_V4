@@ -1,0 +1,7 @@
+# This script deletes all the obsolete backupset and archivelog from disk.
+# Show the configuration
+SHOW ALL;
+
+DELETE NOPROMPT OBSOLETE;
+
+EXIT;

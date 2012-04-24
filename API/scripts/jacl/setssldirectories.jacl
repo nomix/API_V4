@@ -1,0 +1,16 @@
+set newfile [lindex $argv 0]
+set newpwd  [lindex $argv 1]
+set newtfile [lindex $argv 2]
+set newtpwd  [lindex $argv 3]
+
+set listOfSSL [$AdminConfig list SSLConfig]
+
+foreach sslId $listOfSSL {
+	set settingId [$AdminConfig showAttribute $sslId setting]
+	set modifiedSSL [$AdminConfig showall $sslId]
+	$AdminConfig modify $settingId [list [list keyFileName $newfile]]
+	$AdminConfig modify $settingId [list [list keyFilePassword $newpwd]]
+	$AdminConfig modify $settingId [list [list trustFileName $newtfile]]
+	$AdminConfig modify $settingId [list [list trustFilePassword $newtpwd]]
+}
+$AdminConfig save

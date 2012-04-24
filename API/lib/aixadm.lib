@@ -1,0 +1,413 @@
+#!/bin/ksh 
+# Copyright 2010 XPRESS2PEOPLE
+# File                   : aixadm.lib
+# Created on             : 2010/09/22
+# Family                 : AIX
+# Purpose                : This file contains essentials functions for the administration and the management of services AIX.
+# Developpers            :
+#   Sylvain Ballaud can be reached at <sylvain.ballaud@x2p.fr>
+# History                :
+#  2010/09/22 (S. Ballaud) Initial version.
+
+# 1) Function               : get_aix_nfsdstatus 
+# 1) Purpose                : Verify the status of process NFS. 
+# 1) Notes                  : You must load the library aixcom.lib. 
+# 1) Version                : 1.1
+# 1) Syntax                 : get_aix_nfsdstatus
+# 1) Optionals Parameters   : Nothing
+# 1) Mandatories Parameters : Nothing
+# 1) Example                : get_aix_nfsdstatus 
+# 1) Return                 : 0=nfsd is up and 1=nfsd is down.
+# 1) History                :
+#  2010/09/22 (S. Ballaud) Initial version.
+function get_aix_nfsdstatus
+{
+	# Verification de l'existence du processus nfsd
+	get_aix_processstatus /usr/sbin/nfsd >/dev/null
+	# Est-il up ?
+	if [[ ${?} -eq 1 ]]
+	then
+		# Non
+		return 1
+	fi
+	# Verification de l'existence du processus rpc.s
+	get_aix_processstatus /usr/sbin/rpc.s >/dev/null
+	# Est-il up ?
+	if [[ ${?} -eq 1 ]]
+	then
+		# Non
+		return 1
+	fi    
+	
+	# Verification de l'existence du processus rpc.m
+	get_aix_processstatus /usr/sbin/rpc.m >/dev/null
+	# Est-il up ?
+	if [[ ${?} -eq 1 ]]
+	then
+		# Non
+		return 1
+	fi    
+	
+	# Verification de l'existence du processus rpc.l
+	get_aix_processstatus /usr/sbin/rpc.l >/dev/null
+	# Est-il up ?
+	if [[ ${?} -eq 1 ]]
+	then
+		# Non
+		return 1
+	fi    
+	
+	# Verification de l'existence du processus portm
+	get_aix_processstatus /usr/sbin/portm >/dev/null
+	# Est-il up ?
+	if [[ ${?} -eq 1 ]]
+	then
+		# Non
+		return 1
+	fi   
+		
+	# Si tous les processus sont actifs, alors on NFS est actif
+	return 0 
+}
+
+# 2) Function               : start_aix_nfsd  
+# 2) Purpose                : Start the daemon nfsd. 
+# 2) Notes                  : You must be root. 
+# 2) Version                : 1.1
+# 2) Syntax                 : start_aix_nfsd
+# 2) Optionals Parameters   : Nothing
+# 2) Mandatories Parameters : Nothing
+# 2) Example                : start_aix_nfsd 
+# 2) Return                 : 0=success or !0=failed (check man startsrc for more precisions about errors).
+# 2) History                :
+#  2010/09/22 (S. Ballaud) Initial version.
+function start_aix_nfsd {
+	# Lancement du demon 
+	/usr/bin/startsrc -s nfsd >/dev/null
+	# Fin de la fonction 
+	return ${?}	
+}
+
+# 3) Function               : stop_aix_nfsd  
+# 3) Purpose                : Stop the daemon nfsd. 
+# 3) Notes                  : You must be root. 
+# 3) Version                : 1.1
+# 3) Syntax                 : stop_aix_nfsd
+# 3) Optionals Parameters   : Nothing
+# 3) Mandatories Parameters : Nothing
+# 3) Example                : stop_aix_nfsd 
+# 3) Return                 : 0=success or !0=failed (check man stopsrc for more precisions about errors).
+# 3) History                :
+#  2010/09/22 (S. Ballaud) Initial version.
+function stop_aix_nfsd {
+	# Lancement du demon 
+	/usr/bin/stopsrc -s nfsd >/dev/null
+	# Fin de la fonction
+	return ${?}	
+}
+
+# 4) Function               : mount_aix_nfs  
+# 4) Purpose                : Mount remote filesystems. 
+# 4) Notes                  : The list of the alias of sharing NFS is in the file conf/aliasnfstab. You must be root or privileged user. The remote directory must be be inform in the file /etc/exports of the NFS server with permissions. 
+# 4) Version                : 2.0
+# 4) Syntax                 : mount_aix_nfs <alias_sharing> 
+# 4) Optionals Parameters   : Nothing
+# 4) Mandatories Parameters : <alias_sharing>
+# 4) Example                : mount_aix_nfs bck_oracle   
+# 4) Return                 : 0=success, 2=cannot create mount point, or !0=failed (check man mount for more precisions about errors).
+# 4) History                :
+#  2010/09/22 (S. Ballaud) Initial version.
+#  2010/09/22 (S. Ballaud) Function using conf/aliasnfstab.
+#  2010/09/27 (S. OUELLET) Remove stderr redirection to /dev/null and set the return directly
+#  2011/04/24 (S. OUELLET) Modify the mount command and add the nfs parameters check/set : v214
+#  2011/04/24 (S. OUELLET) Creates the mount point if it doesn't exist
+function mount_aix_nfs {
+	# Reception de variables
+	alias=${1}
+	# Capture des informations NFS relatives à l'alias
+	server=$(cat ${APIHOME}/conf/aliasnfstab | egrep "^${alias}:" | awk -F ':' '{print $2}')
+	remote_dir=$(cat ${APIHOME}/conf/aliasnfstab | egrep "^${alias}:" | awk -F ':' '{print $3}')
+	local_dir=$(cat ${APIHOME}/conf/aliasnfstab | egrep "^${alias}:" | awk -F ':' '{print $4}')
+	# Check if the directory exist, if not, it'll be created
+    	if [[ ! -d ${local_dir} ]]
+	then
+	 mkdir ${local_dir} 
+	 if [[ $? -ne 0 ]]
+	 then
+	  echo `date`"mount_aix_nfs:Cannot able to create the mount point : ${local_dir}"
+ 	  return 2
+	 fi
+	fi
+	# Check the nfso parameter is set to 1, if not, it will.
+	if [[ `nfso -a | grep nfs_use_reserved_ports | awk '{ print $3 }'` -eq 0 ]]
+	then
+	 echo `date`":mount_aix_nfs:set the nfs_use_reserved_ports to 1"
+	 nfso -o nfs_use_reserved_ports=1
+	fi
+	# montage
+	#/usr/sbin/mount ${server}:${remote_dir} ${local_dir}
+	#echo "/usr/sbin/mknfsmnt -f ${local_dir} -d ${remote_dir} -h ${server} -m nfs -N -a -t rw -w bg -Y -Z -X -H -j -q -g"
+	#/usr/sbin/mknfsmnt -f ${local_dir} -d ${remote_dir} -h ${server} -m nfs -N -a -t rw -w bg -Y -Z -X -H -j -q -g
+	/usr/sbin/mknfsmnt -f ${local_dir} -d ${remote_dir} -h ${server} -m nfs -B -a -t rw -w bg -b 32768 -c 32768 -o 600 -K 3 -k tcp -Y -Z -X -H -j -q -g
+        # Fin de la fonction 
+	return ${?} 
+}
+
+# 5) Function               : unmount_aix_nfs  
+# 5) Purpose                : Unmount remote filesystems. 
+# 5) Notes                  : The list of the alias of sharing NFS is in the file conf/aliasnfstab. You must be root or privileged user. The remote directory must be inform in the file /etc/exports of the NFS server with permissions. 
+# 5) Version                : 2.0
+# 5) Syntax                 : unmount_aix_nfs <directory or device>
+# 5) Optionals Parameters   : Nothing
+# 5) Mandatories Parameters : Nothing
+# 5) Example                : unmount_aix_nfs bck_oracle
+# 5) Return                 : 0=success or !0=failed (check man unmount for more precisions about errors).
+# 5) History                :
+#  2010/09/22 (S. Ballaud) Initial version.
+#  2010/09/22 (S. Ballaud) Function using conf/aliasnfstab.
+function unmount_aix_nfs
+{
+	# Reception de variables
+	alias=${1}
+
+	# Capture des informations NFS relatives à l'alias
+	local_dir=$(cat ${APIHOME}/conf/aliasnfstab | egrep "^${alias}:" | awk -F ':' '{print $4}')
+	
+	# Lancement du demon 
+	/usr/sbin/unmount ${local_dir} >/dev/null 
+	
+	# Fin de la fonction 
+	return ${?} 
+}
+
+# 6) Function               : list_aix_nfs  
+# 6) Purpose                : List alias for sharing NFS. 
+# 6) Notes                  : The list of the alias of sharing NFS is in the file conf/aliasnfstab. The result is print on stdout. 
+# 6) Version                : 1.0
+# 6) Syntax                 : list_aix_nfs 
+# 6) Optionals Parameters   : Nothing
+# 6) Mandatories Parameters : Nothing
+# 6) Example                : list_aix_nfs 
+# 6) Return                 : 0=success or !0=failed (check man tail for more precisions about errors). 
+# 6) History                :
+#  2010/09/22 (S. Ballaud) Initial version.
+function list_aix_nfs
+{
+	# Affichage du fichier 
+	/usr/bin/tail +2 ${APIHOME}/conf/aliasnfstab | awk -F ":" '{print "alias : "$1 "\nserver : "$2 "\nremote directory : "$3 "\nlocal directory : "$4 "\n"}'
+
+	# Fin de la fonction
+	return ${?} 
+}
+
+# 7) Function               : set_aix_tcptuning 
+# 7) Purpose                : Set the appropriate parameters to increase the tcp performance.
+# 7) Notes                  : The parameters are perhaps not appropriate for your environement. You must be root.
+# 7) Version                : 1.0
+# 7) Syntax                 : set_aix_tcptuning
+# 7) Optionals Parameters   : Nothing
+# 7) Mandatories Parameters : Nothing
+# 7) Example                : set_aix_tcptuning
+# 7) Return                 : 0=success, 2=You're not root, !0=failed 
+# 7) History                :
+#  2010/09/22 (S. Ballaud) Initial version.
+function set_aix_tcptuning
+{ 
+ get_aix_curuser root
+ if [[ $? -ne 0 ]]; 
+ then 
+  return 2 # You're not root
+ fi
+ export LANG=C
+ no -F -p -o sb_max=8738000 -o rfc1323=1 -o tcp_recvspace=873800 -o tcp_sendspace=873800 -o use_isno=0<<EOS
+yes
+EOS
+ return $?
+}
+
+# 8) Function               : add_aix_alias4
+# 8) Purpose                : Add an IPV4 alias 
+# 8) Notes                  : You must be root. 
+# 8) Version                : 1.0
+# 8) Syntax                 : add_aix_alias4 <interface_name> <ip_address> 
+# 8) Optionals Parameters   : Nothing
+# 8) Mandatories Parameters : <interface_name> and <ip_address> 
+# 8) Example                : add_aix_alias4 en0 10.173.23.63 
+# 8) Return                 : 0=success and !0=failed (check man chdev for more precisions about errors). 
+# 8) History                :
+#  2010/12/15 (S. Ballaud) Initial version.
+function add_aix_alias4
+{
+	# Mise en place d'un alias 
+	chdev -l ${1} -a alias4='${2},255.255.255.0'
+
+	# Affectation de la valeur retour de la commande
+	result=${?}
+
+	# Est ce que la commande a fonctionne ?
+	if [[ ${result} -eq 0 ]]
+	then
+		# Rafraichissement du demon inetd	
+		refresh -s inetd 
+
+		# Retourne 0
+		return 0 
+	else
+		# Retourne l'erreur
+		return ${?} 
+	fi
+}
+
+# 9) Function               : rem_aix_alias4
+# 9) Purpose                : Remove an IPV4 alias 
+# 9) Notes                  : You must be root. 
+# 9) Version                : 1.0
+# 9) Syntax                 : rem_aix_alias4 <interface_name> <ip_address>
+# 9) Optionals Parameters   : Nothing
+# 9) Mandatories Parameters : <interface_name> and <ip_address> 
+# 9) Example                : rem_aix_alias4 en0 10.173.23.63 
+# 9) Return                 : 0=success and !0=failed (check man chdev for more precisions about errors). 
+# 9) History                :
+#  2010/12/15 (S. Ballaud) Initial version.
+function rem_aix_alias4
+{
+	# Mise en place d'un alias 
+	chdev -l ${1} -a delalias4='${2},255.255.255.0'
+
+	# Affectation de la valeur retour de la commande
+	result=${?}
+
+	# Est ce que la commande a fonctionne ?
+	if [[ ${result} -eq 0 ]]
+	then
+		# Rafraichissement du demon inetd	
+		refresh -s inetd 
+
+		# Retourne 0
+		return 0 
+	else
+		# Retourne l'erreur
+		return ${?} 
+	fi
+}
+
+# 10) Function               : add_aix_ramdisk
+# 10) Purpose                : Add a ramdisk
+# 10) Notes                  : You must be root. The result is print on stdout. 
+# 10) Version                : 1.0
+# 10) Syntax                 : add_aix_ramdisk <size> 
+# 10) Optionals Parameters   : Nothing
+# 10) Mandatories Parameters : <size : no unit for block of 512 bytes, M for Megabytes and G for Gigabytes> and <directory target> 
+# 10) Example 1              : add_aix_ramdisk 250   
+# 10) Example 2              : add_aix_ramdisk 10G  
+# 10) Example 3              : add_aix_ramdisk 150M  
+# 10) Return                 : 0=success and !0=failed (check man mkramdisk, mkfs or mount for more precisions about errors). 
+# 10) History                :
+#  2010/12/15 (S. Ballaud) Initial version.
+function add_aix_ramdisk
+{
+	# Est ce que le repertoire /ramdisk existe ?
+	if [[ -d /ramdisk ]]
+	then
+		# Oui donc on indique une erreur
+		echo "Directory /ramdisk already exists !!! Please remove it"
+		return 1
+	else
+		# Non donc on le cree 
+		mkdir /ramdisk
+	fi
+
+	# Creation du ramdisk
+	cramdisk=$(/usr/sbin/mkramdisk ${1})
+
+	# Affectation de la valeur de retour
+	result=${?}
+	
+	# La commande a t-elle echoue ?
+	if [[ ${result} -ne 0 ]]
+	then
+		# Oui donc on quitte la fonction
+		return ${result}
+	fi
+
+	# Deduction du peripherique
+	name_ramdisk=$(basename ${cramdisk})
+
+	# Deduction du nom du peripherie de type bloc 
+	bramdisk=$(echo ${name_ramdisk} | sed 's/.\{1\}//')
+
+	# Creation d'un filesystem
+	mkfs -V jfs -o"log=nointegrity,nbpi=512" /dev/${bramdisk}
+
+	# Affectation de la valeur de retour
+        result=${?}
+
+        # La commande a t-elle echoue ?
+        if [[ ${result} -ne 0 ]]
+        then
+ 		# Oui donc on quitte la fonction
+               	return ${result}
+        fi
+
+	# Montage du filesystem
+	mount -V jfs -o nointegrity /dev/${bramdisk} /ramdisk
+
+	# Affectation de la valeur de retour
+        result=${?}
+
+        # La commande a t-elle echoue ?
+        if [[ ${result} -ne 0 ]]
+        then
+ 		# Oui donc on quitte la fonction
+               	return ${result}
+	fi 
+}
+
+# 11) Function               : rem_aix_ramdisk
+# 11) Purpose                : Remove a ramdisk
+# 11) Notes                  : You must be root.  
+# 11) Version                : 1.0
+# 11) Syntax                 : rem_aix_ramdisk <name_ramdisk> 
+# 11) Optionals Parameters   : Nothing
+# 11) Mandatories Parameters : <name_ramdisk : /dev/ramdiskx>  
+# 11) Example                : rem_aix_ramdisk /dev/ramdisk0  
+# 11) Return                 : 0=success and !0=failed (check man umount or rmramdisk for more precisions about errors). 
+# 11) History                :
+#  2010/12/15 (S. Ballaud) Initial version.
+function rem_aix_ramdisk
+{
+	# Demontage du filesystem
+	umount /ramdisk
+
+ 	# Affectation de la valeur de retour
+        result=${?}
+
+        # La commande a t-elle echoue ?
+        if [[ ${result} -ne 0 ]]
+        then
+                # Oui donc on quitte la fonction
+                return ${result}
+        fi
+
+	# Suppression du ramdisk
+	rmramdisk ${1}	
+
+ 	# Affectation de la valeur de retour
+        result=${?}
+
+        # La commande a t-elle echoue ?
+        if [[ ${result} -ne 0 ]]
+        then
+                # Oui donc on quitte la fonction
+                return ${result}
+        fi
+
+	# Suppression du repertoire /ramdisk
+	rm -r /ramdisk	
+}
+
+
+
+
+
+

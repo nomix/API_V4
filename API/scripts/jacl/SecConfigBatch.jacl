@@ -1,0 +1,791 @@
+##  @(#) EuroClear WebSphere.security, WAS602
+##  wsadmin.sh -profile  <Directory>/SecConfigProcs.jacl  -f <Directory>/SecConfigBatch.jacl <Directory>/SecConfig.properties
+##
+## This sample provides sample scripts to configure  
+## WebSphere Application Server security
+
+
+proc parsePropFile {props} {
+
+	puts stdout "entering parsePropFile"
+	
+	global interactiveFlag inputauthmech LTPAPassword LTPAKeyFile LTPATimeout userid password inputUR
+	global enabled enforceJava2Security useDomainQualifiedUserNames cacheTimeout issuePermissionWarning activeProtocol
+	global SSOEnabled SSORequiresSSL SSODomainName
+	global LocalOSServerpassword LocalOSServerID
+	global LDAPServerId LDAPPassword LDAPServerType LDAPHostName LDAPPort 
+	global LDAPBaseDN LDAPBindDN LDAPBindPassword
+	global LDAPsearchTimeout LDAPreuseConnection LDAPIgnoreCase LDAPsslEnabled LDAPsslConfig
+	global LDAPUserFilter LDAPGroupFilter LDAPUserIdMap LDAPGroupIdMap LDAPGroupMemberIdMap LDAPCertificateFilter 
+	global LDAPCertificateMapMode
+	global CUServerId CUServerPasword CUClassName
+	global CSIiaBasicAuth CSIiaClientCert CSIiaIdentityAssertion CSIiaTrustedServers CSIiaisStateful
+	global CSIoaBasicAuth CSIoaClientCert CSIoaIdentityAssertion CSIoaisStateful
+	global CSIicTransport CSIicSSLSetting
+	global CSIocTransport CSIocSSLSetting
+	global SASicSSLSetting SASocSSLSetting
+	global ssl_alias keyFileName keyFilePassword keyFileFormat trustFileName
+	global trustFilePassword trustFileFormat clientAuthentication securityLevel enableCryptoHardwareSupport
+	global cipherSuite1 cipherSuite2 cipherSuite3 cipherSuite4 cipherSuite5 cipherSuite6 cipherSuite7 cipherSuite8
+	global cipherSuite8 cipherSuite9 cipherSuite10 cipherSuite11 cipherSuite12 cipherSuite13 cipherSuite14
+	global cipherSuite15 cipherSuite16 cipherSuite17 cipherSuite18 cipherSuite19 cipherSuite20 cipher_array
+	global j2c_alias j2c_userid j2c_password j2c_description
+	global app_loginAlias login_moduleClassName login_moduleAuthStrategy module_optionName
+	global module_optionValue module_optionRequired module_optionDescription module_optionValidationExpression
+	global trust_assocEnabled trust_interceptorClassName trust_propertyName trust_propertyValue
+	global trust_propertyRequired trust_propertyDescription trust_propertyValidationExpression 
+	
+	set interactiveFlag [string trim [$props getProperty Interactive]]
+	set enabled [string trim [$props getProperty enabled]]
+	set enforceJava2Security [string trim [$props getProperty enforceJava2Security]]
+	set useDomainQualifiedUserNames [string trim [$props getProperty useDomainQualifiedUserNames]]
+	set cacheTimeout [string trim [$props getProperty cacheTimeout]]
+	set issuePermissionWarning [string trim [$props getProperty issuePermissionWarning]]
+	set inputauthmech [string trim [$props getProperty activeAuthMechanism]]
+	set inputUR [string trim [$props getProperty activeUserRegistry]]
+	set activeProtocol [string trim [$props getProperty activeProtocol]] 
+	
+	set LTPAPassword [string trim [$props getProperty LTPAPassword]]
+	set LTPATimeout [string trim [$props getProperty LTPATimeout]]
+	set LTPAKeyFile [string trim [$props getProperty LTPAKeyFile]]
+	
+	set SSOEnabled [string trim [$props getProperty SSOEnabled]]
+	set SSORequiresSSL [string trim [$props getProperty SSORequiresSSL]]
+	set SSODomainName [string trim [$props getProperty SSODomainName]]
+	
+	set LocalOSServerID [string trim [$props getProperty LocalOSServerID]] 
+	set LocalOSServerpassword [string trim [$props getProperty LocalOSServerpassword]]
+	
+	set LDAPServerId [string trim [$props getProperty LDAPServerId]]
+	set LDAPPassword [string trim [$props getProperty LDAPPassword]]
+	set LDAPServerType [string trim [$props getProperty LDAPServerType]]
+	set LDAPHostName [string trim [$props getProperty LDAPHostName]]
+	set LDAPPort [string trim [$props getProperty LDAPPort]]
+	set LDAPBaseDN [string trim [$props getProperty LDAPBaseDN]]
+	set LDAPBindDN [string trim [$props getProperty LDAPBindDN]]
+	set LDAPBindPassword [string trim [$props getProperty LDAPBindPassword]]
+	set LDAPsearchTimeout [string trim [$props getProperty LDAPsearchTimeout]]
+	set LDAPreuseConnection [string trim [$props getProperty LDAPreuseConnection]]
+	set LDAPIgnoreCase [string trim [$props getProperty LDAPIgnoreCase]]
+	set LDAPsslEnabled [string trim [$props getProperty LDAPsslEnabled]]
+	set LDAPsslConfig [string trim [$props getProperty LDAPsslConfig]]
+	
+	set LDAPUserFilter [string trim [$props getProperty LDAPUserFilter]] 
+	set LDAPGroupFilter [string trim [$props getProperty LDAPGroupFilter]]
+	set LDAPUserIdMap [string trim [$props getProperty LDAPUserIdMap]]
+	set LDAPGroupIdMap [string trim [$props getProperty LDAPGroupIdMap]]
+	set LDAPGroupMemberIdMap [string trim [$props getProperty LDAPGroupMemberIdMap]]
+	set LDAPBindPassword [string trim [$props getProperty LDAPBindPassword]]
+	set LDAPSearchTimeout [string trim [$props getProperty LDAPSearchTimeout]]
+	set LDAPCertificateMapMode [string trim [$props getProperty LDAPCertificateMapMode]]
+	set LDAPCertificateFilter [string trim [$props getProperty LDAPCertificateFilter]] 
+	
+	set CUServerId [string trim [$props getProperty CUServerId]]
+	set CUServerPasword [string trim [$props getProperty CUServerPasword]]
+	set CUClassName [string trim [$props getProperty CUClassName]]
+	
+	set CSIiaBasicAuth [string trim [$props getProperty CSIiaBasicAuth]]
+	set CSIiaClientCert [string trim [$props getProperty CSIiaClientCert]]
+	set CSIiaIdentityAssertion [string trim [$props getProperty CSIiaIdentityAssertion]]
+	set CSIiaTrustedServers [string trim [$props getProperty CSIiaTrustedServers]]
+	set CSIiaisStateful [string trim [$props getProperty CSIiaisStateful]]
+	
+	set CSIoaBasicAuth [string trim [$props getProperty CSIoaBasicAuth]]
+	set CSIoaClientCert [string trim [$props getProperty CSIoaClientCert]]
+	set CSIoaIdentityAssertion [string trim [$props getProperty CSIoaIdentityAssertion]]
+	set CSIoaTrustedServers [string trim [$props getProperty CSIoaTrustedServers]]
+	set CSIoaisStateful [string trim [$props getProperty CSIoaisStateful]]
+	
+	set CSIicTransport [string trim [$props getProperty CSIicTransport]]
+	set CSIicSSLSetting [string trim [$props getProperty CSIicSSLSetting]]
+	
+	set CSIocTransport [string trim [$props getProperty CSIocTransport]]
+	set CSIocSSLSetting [string trim [$props getProperty CSIocSSLSetting]]
+	
+	set SASicSSLSetting [string trim [$props getProperty SASicSSLSetting]]
+	set SASocSSLSetting [string trim [$props getProperty SASocSSLSetting]]
+	
+	set userid [string trim [$props getProperty ServerID]]
+	set password [string trim [$props getProperty ServerPassword]]
+	set inputUR [string trim [$props getProperty activeUserRegistry]]
+	
+	set ssl_alias [string trim [$props getProperty alias]]
+	set keyFileName [string trim [$props getProperty keyFileName]]
+	set keyFilePassword [string trim [$props getProperty keyFilePassword]]
+	set keyFileFormat [string trim [$props getProperty keyFileFormat]]
+	set trustFileName [string trim [$props getProperty trustFileName]]
+	set trustFilePassword [string trim [$props getProperty trustFilePassword]]
+	set trustFileFormat [string trim [$props getProperty trustFileFormat]]
+	set clientAuthentication [string trim [$props getProperty clientAuthentication]]
+	set securityLevel [string trim [$props getProperty securityLevel]]
+	set enableCryptoHardwareSupport [string trim [$props getProperty enableCryptoHardwareSupport]]
+	
+	set cipher_array(1)  [string trim [$props getProperty cipherSuite1]]
+	set cipher_array(2)  [string trim [$props getProperty cipherSuite2]]
+	set cipher_array(3)  [string trim [$props getProperty cipherSuite3]]
+	set cipher_array(1)  [string trim [$props getProperty cipherSuite1]]
+	set cipher_array(1)  [string trim [$props getProperty cipherSuite1]]
+	set cipher_array(1)  [string trim [$props getProperty cipherSuite1]]
+	set cipher_array(1)  [string trim [$props getProperty cipherSuite1]]
+	set cipher_array(1)  [string trim [$props getProperty cipherSuite1]]
+	set cipher_array(9)  [string trim [$props getProperty cipherSuite1]]
+	set cipher_array(10)  [string trim [$props getProperty cipherSuite10]]
+	set cipher_array(11)  [string trim [$props getProperty cipherSuite11]]
+	set cipher_array(12)  [string trim [$props getProperty cipherSuite12]]
+	set cipher_array(13)  [string trim [$props getProperty cipherSuite13]]
+	set cipher_array(14)  [string trim [$props getProperty cipherSuite14]]
+	set cipher_array(15)  [string trim [$props getProperty cipherSuite15]]
+	set cipher_array(16)  [string trim [$props getProperty cipherSuite16]]
+	set cipher_array(17)  [string trim [$props getProperty cipherSuite17]]
+	set cipher_array(18)  [string trim [$props getProperty cipherSuite18]]
+	set cipher_array(19)  [string trim [$props getProperty cipherSuite19]]
+	set cipher_array(20)  [string trim [$props getProperty cipherSuite20]]
+	
+	set j2c_alias [string trim [$props getProperty j2cAlias]]
+	set j2c_userid [string trim [$props getProperty j2cUserid]]
+	set j2c_password [string trim [$props getProperty j2cPassword]]
+	set j2c_description [string trim [$props getProperty j2cDescription]] 
+	
+	set app_loginAlias [string trim [$props getProperty appLoginAlias]]
+	set login_moduleClassName [string trim [$props getProperty loginModuleClassName]]
+	set login_moduleAuthStrategy [string trim [$props getProperty loginModuleAuthStrategy]]
+	set module_optionName [string trim [$props getProperty moduleOptionName]]
+	set module_optionValue [string trim [$props getProperty moduleOptionValue]]
+	set module_optionRequired [string trim [$props getProperty moduleOptionrequired]]
+	set module_optionDescription [string trim [$props getProperty moduleOptiondescription]]
+	set module_optionValidationExpression [string trim [$props getProperty moduleOptionValidationExpression]]
+	
+	set trust_assocEnabled [string trim [$props getProperty trustAssocEnabled]]
+	set trust_interceptorClassName [string trim [$props getProperty trustInterceptorClassName]]
+	set trust_propertyName [string trim [$props getProperty trustPropertyName]]
+	set trust_propertyValue [string trim [$props getProperty trustPropertyValue]]
+	set trust_propertyRequired [string trim [$props getProperty trustPropertyRequired]]
+	set trust_propertyDescription [string trim [$props getProperty trustPropertyDescription]]
+	set trust_propertyValidationExpression [string trim [$props getProperty trustPropertyValidationExpression]]
+}
+
+proc configGlobalSecurity {} {
+	global AdminConfig security_item validationResult
+	global enabled enforceJava2Security useDomainQualifiedUserNames cacheTimeout issuePermissionWarning
+	global activeProtocol inputUR inputauthmech
+	set attrib {}
+	
+	if {$enabled != {}} {
+		lappend attrib [list enabled $enabled]
+	}
+	if {$enforceJava2Security != {}} {
+		lappend attrib [list enforceJava2Security $enforceJava2Security]
+	}
+	if {$useDomainQualifiedUserNames != {}} {
+		lappend attrib [list useDomainQualifiedUserNames $useDomainQualifiedUserNames]
+	}
+	if {$cacheTimeout != {}} {
+		lappend attrib [list cacheTimeout $cacheTimeout]
+	}
+	if {$issuePermissionWarning != {}} {
+		lappend attrib [list issuePermissionWarning $issuePermissionWarning]
+	}
+	if {$activeProtocol != {}} {
+		lappend attrib [list activeProtocol $activeProtocol]
+	}
+	if {$inputauthmech != {}} {
+		setAuthMech $inputauthmech
+	}
+	if {$inputUR != {}} {
+		setActiveUserRegistry $inputUR
+	}
+	if {[llength attrib] != 0} {
+		$AdminConfig modify $security_item $attrib
+		if {[string match [validateGlobalSecurity] false]} {
+			set validationResult false
+		}
+	}
+}
+
+proc configLTPA {} {
+	global AdminConfig LTPA
+	global LTPAPassword LTPATimeout privateKey publicKey sharedKey
+	set attrib {}
+	
+	if {$LTPAPassword != {}} {
+		lappend attrib [list password $LTPAPassword]
+	}
+	if {$LTPATimeout != {}} {
+		lappend attrib [list timeout $LTPATimeout]
+	}
+	if {[llength attrib] != 0} {
+		generateLTPAKeys $LTPAPassword
+		exportLTPAKey
+		lappend attrib [list private [list [list byteArray $privateKey]]] [list public [list [list byteArray $publicKey]]] [list shared [list [list byteArray $sharedKey]]]
+		$AdminConfig modify $LTPA $attrib
+		if {[string match [validateLTPA] false]} {
+			set validationResult false
+		}
+	}
+}
+
+proc configSSO {} {
+	global AdminConfig
+	global SSOEnabled SSORequiresSSL SSODomainName
+	set attrib {}
+	
+	if {$SSOEnabled != {}} {
+		lappend attrib [list enabled $SSOEnabled]
+	}
+	if {$SSORequiresSSL != {}} {
+		lappend attrib [list requiresSSL $SSORequiresSSL]
+	}
+	if {$SSODomainName != {}} {
+		lappend attrib [list domainName $SSODomainName]
+	}
+	if {[llength attrib] != 0} {
+		setSSO $attrib
+	}
+}
+
+proc configLocalOS {} {
+	global LocalOSServerID LocalOSServerpassword
+	
+	if {$LocalOSServerID != {} && $LocalOSServerpassword != {}} {
+		setLocalOSUserRegistry $LocalOSServerID $LocalOSServerpassword
+	}
+}
+
+proc configLDAP {} {
+	global validationResult
+	global LDAPServerId LDAPPassword LDAPServerType LDAPHostName LDAPPort LDAPBaseDN LDAPBindDN LDAPBindPassword
+        global LDAPsearchTimeout LDAPreuseConnection LDAPIgnoreCase LDAPsslEnabled LDAPsslConfig
+	set attrib {}
+	
+	if {$LDAPServerId != {}} {
+		lappend attrib [list serverId $LDAPServerId]
+	}
+	if {$LDAPPassword != {}} {
+		lappend attrib [list serverPassword $LDAPPassword]
+	}
+	if {$LDAPServerType != {}} {
+		lappend attrib [list type $LDAPServerType]
+		updateLDAPFilter $LDAPServerType
+	}
+	if {$LDAPHostName != {} && $LDAPPort != {}} {  
+		lappend attrib [list hosts [list [list [list host $LDAPHostName] [list port $LDAPPort]]]] [list realm $LDAPHostName:$LDAPPort]  
+	}
+	if {$LDAPBaseDN != {}} {
+	 	lappend attrib [list baseDN $LDAPBaseDN]
+	}
+	if {$LDAPBindDN != {}} {
+		lappend attrib [list bindDN $LDAPBindDN]
+	}
+	if {$LDAPBindPassword != {}} {
+		lappend attrib [list bindPassword $LDAPBindPassword]
+	}
+	if {$LDAPsearchTimeout != {}} {
+		lappend attrib [list searchTimeout $LDAPsearchTimeout]
+	}
+	if {$LDAPreuseConnection != {}} {
+		lappend attrib [list reuseConnection $LDAPreuseConnection]
+	}
+	if {$LDAPIgnoreCase != {}} {
+		lappend attrib [list ignoreCase $LDAPIgnoreCase]
+	}
+	if {$LDAPsslEnabled != {}} {
+		lappend attrib [list sslEnabled	$LDAPsslEnabled]
+	}
+	if {$LDAPsslConfig != {}} {
+		lappend attrib [list sslConfig $LDAPsslConfig]
+	}
+	if {[llength attrib] != 0} {
+		setLDAPUserRegistry $attrib
+		if {[string match [validateLDAPUserRegistry] false]} {
+			set validationResult false
+		}
+	}
+}
+
+proc configAdvancedLDAP {} {
+	global LDAPUserFilter LDAPGroupFilter LDAPUserIdMap LDAPGroupIdMap LDAPGroupMemberIdMap LDAPBindPassword LDAPSearchTimeout
+	global LDAPCertificateMapMode LDAPCertificateFilter
+	set attrib {}
+	
+	if {$LDAPUserFilter != {}} {
+		lappend attrib [list userFilter $LDAPUserFilter]
+	}
+	if {$LDAPGroupFilter != {}} {
+		lappend attrib [list groupFilter $LDAPGroupFilter]
+	}
+	if {$LDAPUserIdMap != {}} {
+			lappend attrib [list userIdMap $LDAPUserIdMap]
+	}
+	if {$LDAPGroupIdMap != {}} {
+		lappend attrib [list groupIdMap $LDAPGroupIdMap]
+	}
+	if {$LDAPGroupMemberIdMap != {}} {
+		lappend attrib [list groupMemberIdMap $LDAPGroupMemberIdMap]
+	}
+	if {$LDAPCertificateMapMode != {}} {
+		lappend attrib [list certificateMapMode $LDAPCertificateMapMode]
+	}
+	if {$LDAPCertificateFilter != {}} {
+		lappend attrib [list certificateFilter $LDAPCertificateFilter]
+	}
+	if {[llength attrib] != 0} {
+		setLDAPFilter $attrib
+	}
+}
+
+proc configCustomReg {} {
+	global validationResult
+        global CUServerId CUServerPasword CUClassName
+	set attrib {}
+	
+	if {$CUServerId != {} && $CUServerPasword != {}} {
+		lappend attrib [list serverId $CUServerId] [list serverPassword $CUServerPasword]
+	}
+	if {$CUClassName != {}} {
+		lappend attrib [list customRegistryClassName $CUClassName]
+	}
+	if {[llength attrib] != 0} {
+		setCustomUserRegistry $attrib
+		if {[string match [validateCustomUserRegistry] false]} {
+			set validationResult false
+		} 
+	}
+}
+
+proc configCSIia {} {
+	global CSIiaBasicAuth CSIiaClientCert CSIiaIdentityAssertion CSIiaTrustedServers CSIiaisStateful
+	set attrib {}
+	
+	if {$CSIiaBasicAuth != {}} {
+		lappend attrib BasicAuth $CSIiaBasicAuth
+	}
+	if {$CSIiaClientCert != {}} {
+		lappend attrib ClientCert $CSIiaClientCert
+	}
+	if {$CSIiaIdentityAssertion != {}} {
+		lappend attrib IdentityAssertion $CSIiaIdentityAssertion
+	}
+	if {$CSIiaTrustedServers != {}} {
+		lappend attrib TrustedServers $CSIiaTrustedServers
+	}
+	if {$CSIiaTrustedServers != {}} {
+		lappend attrib isStateful $CSIiaisStateful
+	}
+	if {[llength attrib] != 0} {
+		setCSIia $attrib
+	}
+}
+
+proc configCSIoa {} {
+	global CSIoaBasicAuth CSIoaClientCert CSIoaIdentityAssertion CSIoaisStateful
+	set attrib {}
+	
+	if {$CSIoaBasicAuth != {}} {
+		lappend attrib BasicAuth $CSIoaBasicAuth
+	}
+	if {$CSIoaClientCert != {}} {
+		lappend attrib ClientCert $CSIoaClientCert
+	}
+	if {$CSIoaIdentityAssertion != {}} {
+		lappend attrib IdentityAssertion $CSIoaIdentityAssertion
+	}
+	if {$CSIoaisStateful != {}} {
+		lappend attrib isStateful $CSIoaisStateful
+	}
+	if {[llength attrib] != 0} {
+		setCSIoa $attrib
+	}
+}
+
+proc configCSIic {} {
+	global CSIicTransport CSIicSSLSetting
+	set attrib {}
+	
+	if {$CSIicTransport != {}} {
+		lappend attrib Transport $CSIicTransport
+	}
+	if {$CSIicSSLSetting != {}} {
+		lappend attrib SSLSetting $CSIicSSLSetting
+	}
+	if {[llength attrib] != 0} {
+		setCSIic $attrib
+	}
+}
+
+proc configCSIoc {} {
+	global CSIocTransport CSIocSSLSetting
+	set attrib {}
+	
+	if {$CSIocTransport != {}} {
+		lappend attrib Transport $CSIocTransport
+	}
+	if {$CSIocSSLSetting != {}} {
+		lappend attrib SSLSetting $CSIocSSLSetting
+	}
+	if {[llength attrib] != 0} {
+		setCSIoc $attrib
+	}
+}
+
+proc configSASic {} {
+	global SASicSSLSetting
+	set attrib {}
+	
+	if {$SASicSSLSetting != {}} {
+		lappend attrib SSLSetting $SASicSSLSetting
+	}
+	if {[llength attrib] != 0} {
+		setSASic $attrib
+	}
+}
+
+proc configSASoc {} {
+	global SASocSSLSetting
+	set attrib {}
+	
+	if {$SASocSSLSetting != {}} {
+		lappend attrib SSLSetting $SASocSSLSetting
+	}
+	if {[llength attrib] != 0} {
+		setSASoc $attrib
+	}
+}
+
+proc configSSL {} {
+	global argv AdminConfig
+	global interactiveFlag ssl_alias keyFileName keyFilePassword keyFileFormat trustFileName trustFilePassword 
+        global trustFileFormat clientAuthentication securityLevel enableCryptoHardwareSupport
+        
+	set security_root [$AdminConfig list Security]
+	set attrib {}
+	set matchFound 0
+	
+	if {$ssl_alias != {}} {
+		set sslConfigs [$AdminConfig list SSLConfig]
+		foreach sslId $sslConfigs {
+			set getAlias [$AdminConfig showAttribute $sslId alias]
+			set nodeId [$AdminConfig getid /Node:/]
+                        foreach node $nodeId {
+                                set nodeName [$AdminConfig showAttribute $node name]
+                                set newAlias $nodeName/$ssl_alias
+                                if {[string compare $getAlias $newAlias] == 0} {
+                                        set matchFound 1
+                                        break
+                                } 
+                        }
+                        if {$matchFound == 1} {
+                                break
+                        }
+		}
+	}
+        
+	
+	if {$matchFound != 1} {		 
+		if {$keyFileName != {}} {
+			lappend attrib [list keyFileName $keyFileName]
+		}
+		if {$keyFilePassword != {}} {
+			lappend attrib [list keyFilePassword $keyFilePassword]
+		}
+		if {$keyFileFormat != {}} {
+			lappend attrib [list keyFileFormat $keyFileFormat]
+		}
+		if {$trustFileName != {}} {
+			lappend attrib [list trustFileName $trustFileName]
+		}
+		if {$trustFilePassword != {}} {
+			lappend attrib [list trustFilePassword $trustFilePassword]
+		}
+		if {$securityLevel != {}} {
+			lappend attrib [list securityLevel $securityLevel]
+		}
+		if {$clientAuthentication != {}} {
+			lappend attrib [list clientAuthentication $clientAuthentication]
+		}
+		if {$enableCryptoHardwareSupport != {}} {
+			lappend attrib [list enableCryptoHardwareSupport $enableCryptoHardwareSupport]
+		}
+
+		if {[llength $attrib] != 0} {
+			set ssl_setting [list setting $attrib]
+			set ssl_entry [list [list alias $newAlias] $ssl_setting]
+			$AdminConfig create SSLConfig $security_root $ssl_entry repertoire
+			# $AdminConfig save
+		}   
+	
+	} else {
+	puts stdout "This SSL alias already exists, it will not be created"
+	}    
+}
+
+proc configAdditionalSSL {} {
+	global cryptoTokenType cryptoLibraryFile cryptoPassword
+	
+	set attrib {}
+	
+	if {$cryptoTokenType != {}} {
+		lappend attrib [list tokenType $cryptoTokenType]
+	}
+	if {$cryptoLibraryFile != {}} {
+		lappend attrib [list libraryFile $cryptoLibraryFile]
+	}
+	if {$cryptoPassword != {}} {
+		lappend attrib [list password $cryptoPassword]
+	}
+	if {[llength attrib] != 0} {
+		setAdditionalSSL $attrib
+	}
+}
+
+
+
+proc configJ2CAuthData {} {
+	global argv AdminConfig
+	global interactiveFlag j2c_alias j2c_userid j2c_password j2c_description
+        
+	set security_root [$AdminConfig list Security]
+        set attrib {}
+	set matchFound 0
+	
+	set nodeId [$AdminConfig getid /Node:/]
+        foreach node $nodeId {
+	        set nodeName [$AdminConfig showAttribute $node name] 
+	        set givenAlias $nodeName/$j2c_alias
+
+                if {$j2c_alias != {}} {
+		        set listJAASAuthData [$AdminConfig list JAASAuthData]
+		        foreach jaasAuthId $listJAASAuthData {
+			        set existingAlias [$AdminConfig showAttribute $jaasAuthId alias]
+			
+			        if {[string compare $givenAlias $existingAlias] == 0} {
+				        set matchFound 1
+				        break
+			        }
+		        }
+		
+	        }
+		if {$matchFound != 1} {
+		        lappend attrib [list alias $givenAlias]
+                        break;
+		} else {
+		        puts stdout "This JAAS Authentication Data Alias already exists,it will not be created"
+		}
+        }
+	if {$matchFound != 1} {
+		if {$j2c_userid != {}} {
+			lappend attrib [list userId $j2c_userid]
+		}
+		if {$j2c_password != {}} {
+			lappend attrib [list password $j2c_password]
+		}
+		if {$j2c_description != {}} {
+			lappend attrib [list description $j2c_description]
+		}
+	
+		if {[llength $attrib] != 0} {
+			puts stdout "in JAASAuthData,attrib=$attrib"
+			$AdminConfig create JAASAuthData $security_root $attrib
+			# $AdminConfig save
+		}
+	}       
+}
+
+proc configJAASAppLogin {} {
+	global AdminConfig
+	global app_loginAlias login_moduleClassName login_moduleAuthStrategy module_optionName
+	global module_optionValue module_optionRequired module_optionDescription module_optionValidationExpression 
+        
+	set appLoginConfigId [lindex [$AdminConfig list JAASConfiguration] 0]
+        set alias_attrib {}
+	set module_attrib {}
+	set options_attrib {}
+	set matchFound 0
+	
+        if {$app_loginAlias != {}} {
+		set definedAppLogin [$AdminConfig list JAASConfigurationEntry]
+		foreach  appLogin $definedAppLogin {
+			set alias [$AdminConfig showAttribute $appLogin alias]
+			
+			if {[string compare $alias $app_loginAlias] == 0} {
+				set matchFound 1
+				break
+			}
+		}
+		 
+		if {$matchFound != 1} {
+			lappend alias_attrib [list alias $app_loginAlias]
+			$AdminConfig create JAASConfigurationEntry $appLoginConfigId $alias_attrib 
+		} else {
+			puts stdout "This Application Login Alias already exists so cannot be created"
+		} 
+	}
+	if  {$matchFound != 1} {
+
+		if {$login_moduleClassName != {}} {
+			lappend module_attrib [list moduleClassName $login_moduleClassName]
+		}
+		if {$login_moduleAuthStrategy != {}} {
+			lappend module_attrib [list authenticationStrategy $login_moduleAuthStrategy]
+		}
+	
+		set JAASConfigEntryId [$AdminConfig list JAASConfigurationEntry]
+	
+		foreach jaasConfigEntryId $JAASConfigEntryId {
+			set alias [$AdminConfig showAttribute $jaasConfigEntryId alias]
+			if {[string compare $alias $app_loginAlias] == 0} {
+				break
+			}
+		} 
+                if {[llength $module_attrib] > 1} {
+		        $AdminConfig create JAASLoginModule $jaasConfigEntryId $module_attrib
+                }
+	
+		set loginModuleId [$AdminConfig list JAASLoginModule]
+		foreach jaasLoginId $loginModuleId {
+			set className [$AdminConfig showAttribute $jaasLoginId moduleClassName]
+		
+			if {[string compare $className $login_moduleClassName] == 0} {
+				break
+			}
+		}
+		if {$module_optionName != {}} {
+			lappend options_attrib [list name $module_optionName]
+		}
+	
+		if {$module_optionValue != {}} {
+			lappend options_attrib [list value $module_optionValue]
+		}
+
+		if {$module_optionRequired != {}} {
+			lappend options_attrib [list required $module_optionRequired]
+		}
+
+		if {$module_optionDescription != {}} {
+			lappend options_attrib [list description $module_optionDescription]
+		}
+
+		if {$module_optionValidationExpression != {}} {
+			lappend options_attrib [list validationExpression $module_optionValidationExpression]
+		}
+	
+                if {[llength $options_attrib] > 0} {
+		        $AdminConfig modify $jaasLoginId [list [list options [list $options_attrib]]]
+		        set jaasAttrs [$AdminConfig showall $jaasLoginId]
+                }
+	
+		# $AdminConfig save  
+	}        
+}
+
+proc configTA {} {
+	global AdminConfig
+	global trust_assocEnabled trust_interceptorClassName  trust_propertyName trust_propertyValue
+	global trust_propertyRequired trust_propertyDescription trust_propertyValidationExpression 
+        
+	set trustAssocConfigId [$AdminConfig list TrustAssociation]
+        set trust_attrib {}
+	set interceptor_attrib {}
+	set properties_attrib {}
+        set options_attrib {}
+	set matchFound 0
+	
+        if {$trust_assocEnabled != {}} {
+		if {[regexp $trust_assocEnabled y]} {
+			lappend trust_attrib [list enabled "true"]
+		} else {
+			lappend trust_attrib [list enabled "false"]
+		}
+		$AdminConfig modify $trustAssocConfigId $trust_attrib 
+	}
+	if {$trust_interceptorClassName != {}} {
+		set listOfTAI [$AdminConfig list TAInterceptor]
+		foreach tai $listOfTAI {
+			set className [$AdminConfig showAttribute $tai interceptorClassName]
+			if {[string compare $className $trust_interceptorClassName] == 0} {
+				set matchFound 1
+				break
+			}
+		}
+		if {$matchFound != 1} {
+			lappend interceptor_attrib [list interceptorClassName $trust_interceptorClassName]
+		}
+	}
+	if {$matchFound != 1} {	
+		$AdminConfig create TAInterceptor $trustAssocConfigId $interceptor_attrib
+	
+		set interceptorConfigId [$AdminConfig list TAInterceptor]
+	
+	 
+		if {$trust_propertyName != {}} {
+			lappend options_attrib [list name $trust_propertyName]
+		}
+	
+		if {$trust_propertyValue != {}} {
+			lappend options_attrib [list value $trust_propertyValue]
+		}
+
+		if {$trust_propertyRequired != {}} {
+			lappend options_attrib [list required $trust_propertyRequired]
+		}
+
+		if {$trust_propertyDescription != {}} {
+			lappend options_attrib [list description $trust_propertyDescription]
+		}
+
+		if {$trust_propertyValidationExpression != {}} {
+			lappend options_attrib [list validationExpression $trust_propertyValidationExpression]
+		}
+	
+		$AdminConfig modify $interceptorConfigId [list [list trustProperties [list $options_attrib]]]
+		set trustAttrs [$AdminConfig showall $interceptorConfigId]
+		puts stdout "trustAttrs=$trustAttrs"
+		# $AdminConfig save
+	}	     
+	
+}
+
+#####################################################################################################
+#
+#  Main procedure
+#
+#####################################################################################################
+
+if {[lindex $argv 0] == {}} {
+	puts stdout "\nPlease provide property file. "
+	puts stdout "ex.  wsadmin -profile SecConfigProcs.jacl -f SecConfigBatch.jacl SecConfigProps.properties"
+	exit
+}
+
+set propFile [lindex $argv 0]
+set props [loadProperties $propFile]
+set validationResult true
+
+parsePropFile $props
+				
+configGlobalSecurity
+configSSL
+configLTPA
+configSSO
+configTA
+configLocalOS
+configLDAP
+configAdvancedLDAP
+configCustomReg
+configJ2CAuthData
+configJAASAppLogin
+configCSIia
+configCSIoa
+configCSIic
+configCSIoc
+configSASic
+configSASoc
+
+
+set validationResult [validation]
+
+if {[string match $validationResult true]} {
+	saveConfig
+	puts stdout "\n\nValidation success.  Configuration saved"
+} else {
+	puts stdout "\n\nValidation failed. Please correct the missing/incorrect fields"
+}

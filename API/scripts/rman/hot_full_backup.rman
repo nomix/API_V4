@@ -1,0 +1,8 @@
+# This script perform a full hot backup of an oracle database.
+# Database must be available for this operation to succeed.
+SHOW ALL;
+
+# Backup the database. Thhe archived redo logs are included
+# in the backupset then deleted from disk to save space.
+BACKUP DATABASE PLUS ARCHIVELOG DELETE ALL INPUT;
+EXIT;

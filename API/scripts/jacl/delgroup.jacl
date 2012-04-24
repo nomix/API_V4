@@ -1,0 +1,18 @@
+# -------------------------------------------------------------------
+# startserver.jacl
+# Syntaxe : startserver <application> <nodeName>
+# Version 1.0 11/07/2006 By S.OUELLET
+# -------------------------------------------------------------------
+
+puts "oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo"
+puts " Roles creation.."
+  set ges [$AdminConfig list GroupExt]
+  foreach ge $ges {
+    if {([string first administrators $ge] != -1) || ([string first operators $ge] != -1) || ([string first configurators $ge] != -1) || ([string first monitors $ge] != -1)} {
+      $AdminConfig remove $ge
+    }
+  }
+puts " Roles created."
+$AdminConfig save
+puts " Configuration saved."
+puts "oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo"

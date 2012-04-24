@@ -1,0 +1,274 @@
+#!/bin/ksh 
+# Copyright 2010 XPRESS2PEOPLE
+# File                   : aixinf.lib
+# Created on             : 2010/10/06
+# Family                 : AIX
+# Purpose                : This file contains essentials functions to get informations about the state of the system.
+# Developpers            :
+#   Sylvain Ballaud can be reached at <sylvain.ballaud@x2p.fr>
+# History                :
+#  2010/10/06 (S. Ballaud) Initial version.
+
+# 1) Function               : chk_aix_availablespace
+# 1) Purpose                : Verify that there is enough disk space in the specified directory.
+# 1) Notes                  : You must specify a size of space memory wanted either in MB or in %.
+# 1) Version                : 1.1
+# 1) Syntax                 : chk_aix_availablespace <directory> <memory space>
+# 1) Optionals Parameters   : Nothing
+# 1) Mandatories Parameters : <directory> and <memory space in MB or in %>
+# 1) Example 1              : chk_aix_availablespace /home/oracle 100MB
+# 1) Example 2              : chk_aix_availablespace /etc 20%
+# 1) Return                 : 0=Sufficient space, 1=Miss space or 2=No unity expressed for the size of space memory wanted.
+# 1) History                :
+#  2010/03/18 (S. Ballaud) Initial version.
+function chk_aix_availablespace
+{
+	# Affectation du repertoire et de la memoire voulue dans une variable
+        dir=${1}
+        mem_wanted=${2}
+
+        # S'agit-il d'un espace memoire exprime en MB ou en %
+        if [[ ${mem_wanted} == *MB  ]]
+        then
+                # C'est en MB donc on verifie la memoire disponible en MB du FS contenant le repertoire specifie
+                mem_free=$(df -m ${dir} | grep "/" | awk '{print $3}')
+
+                # Suppression du MB
+                mem_wanted=$(expr ${mem_wanted} : "\(.*\)..$")
+
+                # Supprimer la partie decimale de mem_free et de mem_wanted
+                mem_free=$(echo $mem_free | awk -F ',' '{print $1}')
+                mem_wanted=$(echo $mem_wanted | awk -F ',' '{print $1}')
+
+		# Est ce qu'il a assez d'espace disque ? 
+		if [[ $mem_free -gt $mem_wanted ]]
+		then
+			# Oui
+			return 0
+		else
+			# Non
+			return 1
+		fi
+       else
+                # Non donc s'agit-il d'un espace memoire exprime en %
+                if [[ ${mem_wanted} == *% ]]
+                then
+                        # Oui donc on verifie la memoire utilisee en % du FS contenant le repertoire specifie
+                        mem_used=$(df -m ${dir} | grep "/" | awk '{print $4}')
+
+                        # Suppression du %
+                        mem_wanted=$(expr ${mem_wanted} : "\(.*\).$")
+                        mem_used=$(expr ${mem_used} : "\(.*\).$")
+
+                        # On convertit la memoire utilisee en memoire libre
+                        ((mem_free=100-mem_used))
+			
+			# Y'a t-il assez d'espace disque ?
+			if [[ $mem_free -gt $mem_wanted ]]
+			then
+				# Oui
+				return 0
+			else
+				# Non
+				return 1
+			fi
+                else
+                        # Non donc on indique une erreur et on quitte la fonction
+                        return 2
+                fi
+        fi
+}
+
+# 2) Function               : get_aix_udf
+# 2) Purpose                : Get the used disk space on a server (in Gigs)
+# 2) Notes                  : This function use the standard output for return value nnnn,nn.
+# 2) Version                : 1.0
+# 2) Syntax                 : get_aix_udf
+# 2) Optionals Parameters   : Nothing
+# 2) Mandatories Parameters : Nothing
+# 2) Example                : get_aix_udf
+# 2) Return                 : 0=ok, !0=KO
+# 2) Stdout                 : The result in format nnnn,nn
+# 2) History                :
+#  2010/09/15 (S. Ouellet) Initial version.
+get_aix_udf() {
+ df -g | egrep -v "Blocs|-" | awk '{totala += $2} {totalf += $3} END{print totala - totalf}'
+}
+
+# 3) Function               : get_aix_fdf
+# 3) Purpose                : Get the free disk space globaly available on a server (in Gigs)
+# 3) Notes                  : This function use the standard output for return value in format nnnn,nn.
+# 3) Version                : 1.0
+# 3) Syntax                 : get_aix_fdf
+# 3) Optionals Parameters   : Nothing
+# 3) Mandatories Parameters : Nothing
+# 3) Example                : get_aix_fdf
+# 3) Return                 : 0=ok, !0=KO
+# 3) History                :
+#  2010/09/15 (S. Ouellet) Initial version.
+get_aix_fdf() {
+ df -g | egrep -v "Blocs|-" | awk '{total += $3} END{print total}'
+}
+
+# 4) Function               : get_aix_adf
+# 4) Purpose                : Get the allocated disk space on a server (in Gigs)
+# 4) Notes                  : This function use the standard output for return value in format nnnn,nn.
+# 4) Version                : 1.0
+# 4) Syntax                 : get_aix_adf
+# 4) Optionals Parameters   : Nothing
+# 4) Mandatories Parameters : Nothing
+# 4) Example                : get_aix_adf
+# 4) Return                 : 0=ok, !0=KO
+# 4) History                :
+#  2010/09/15 (S. Ouellet) Initial version.
+get_aix_adf() {
+ df -g | egrep -v "Blocs|-" | awk '{total += $2} END{print total}'
+}
+
+# 5) Function               : check_aix_byfstar100bytes
+# 5) Purpose                : Check if file systems can be save with tar and the name + the path doesn't exceed 100 bytes 
+# 5) Notes                  : You must load aixcom.lib 
+# 5) Version                : 1.0
+# 5) Syntax                 : check_aix_byfstar100bytes
+# 5) Optionals Parameters   : Nothing
+# 5) Mandatories Parameters : Nothing 
+# 5) Example                : check_aix_byfstar100bytes 
+# 5) Return                 : 0=ok, !0=KO
+# 5) History                :
+#  2010/10/18 (S. Ouellet) Initial version.
+check_aix_byfstar100bytes() {
+ export LANG=C
+ _rc=0
+ for _fs in $(get_aix_allfsnorootvg)
+ do
+  if [[ -d ${_fs} ]]
+  then
+   cd ${_fs}
+  else
+   echo "ERROR fs ${_fs} doesn't exist."
+   return 255
+  fi
+  if [[ $(tar -cvf /dev/null ${_fs} 2>&1 | grep "file name too long" | wc -l) -ne 0 ]]
+  then
+   echo "WARNING : ${_fs} FS have too long path/filename entries for tarball! DO NOT TAR THIS FS!"
+   let _rc=${_rc}+1
+  fi
+ done
+ return ${_rc}
+}
+
+# 6) Function               : get_aix_macaddr 
+# 6) Purpose                : Get the MAC address of a specific interface.
+# 6) Notes                  : This function use the standard output for return value.
+# 6) Version                : 1.0
+# 6) Syntax                 : get_aix_macaddr <interface> 
+# 6) Optionals Parameters   : Nothing
+# 6) Mandatories Parameters : <interface> 
+# 6) Example                : get_aix_macaddr ent1 
+# 6) Return                 : 0=success or !0=failed (check man lscfg for more precisions about errors). 
+# 6) History                :
+#  2010/10/28 (S. Ballaud) Initial version.
+function get_aix_macaddr
+{
+	# La langue est-elle l'anglais ?
+	if [[ ${LANG} == "C" ]]
+	then
+		# Oui donc on fait la commande correspondante
+		lscfg -vpl ${1} | grep "Network Address" | sed 's/.\{36\}//'
+	fi
+
+	# La langue est-elle le francais ?
+	if [[ ${LANG} == "fr_FR" ]]
+	then
+		# Oui donc on fait la commande correspondante
+		lscfg -vpl ${1} | grep "Adresse réseau" | sed 's/.\{36\}//'
+	fi
+}
+
+# 7) Function               : get_aix_entlinkstatus 
+# 7) Purpose                : Get the status of a ethernet link. 
+# 7) Notes                  : Nothing.
+# 7) Version                : 1.0
+# 7) Syntax                 : get_aix_entlinkstatus <interface> 
+# 7) Optionals Parameters   : Nothing
+# 7) Mandatories Parameters : <interface> 
+# 7) Example                : get_aix_entlinkstatus ent1 
+# 7) Return                 : 0=up or 1=down
+# 7) History                :
+#  2010/10/28 (S. Ballaud) Initial version.
+function get_aix_entlinkstatus
+{
+        # La langue est-elle l'anglais ?
+        if [[ ${LANG} == "C" ]]
+        then
+                # Oui donc on fait la commande correspondante
+                netstat -v ${1} 2>/dev/null | egrep "^ETHERNET\ STATISTICS|^Link\ Status\ :" >/dev/null
+        	
+		# Fin de la fonction
+		return ${?} 
+	fi
+
+        # La langue est-elle le francais ?
+        if [[ ${LANG} == "fr_FR" ]]
+        then
+                # Oui donc on fait la commande correspondante
+                netstat -v ${1} 2>/dev/null | egrep "^STATISTIQUES\ ETHERNET|^Status\ du\ Lien\ :" >/dev/null
+ 		
+		# Y'a t-il une reponse ?
+		return ${?}
+	
+       fi
+} 
+
+# 8) Function               : list_aix_ethcard  
+# 8) Purpose                : List Ethernet card. 
+# 8) Notes                  : This function use the standard output for return value.
+# 8) Version                : 1.0
+# 8) Syntax                 : list_aix_ethcard 
+# 8) Optionals Parameters   : Nothing
+# 8) Mandatories Parameters : Nothing 
+# 8) Example                : list_aix_ethcard  
+# 8) Return                 : 0=success or !0=failed (check man lsparent for more precisions about errors).
+# 8) History                :
+#  2010/10/29 (S. Ballaud) Initial version.
+function list_aix_ethcard 
+{
+	lsparent -C -k ent
+}
+
+
+# 9) Function               : list_aix_disk  
+# 9) Purpose                : List disks. 
+# 9) Notes                  : This function use the standard output for return value.
+# 9) Version                : 1.0
+# 9) Syntax                 : list_aix_disk 
+# 9) Optionals Parameters   : Nothing
+# 9) Mandatories Parameters : Nothing 
+# 9) Example                : list_aix_disk  
+# 9) Return                 : 0=success or !0=failed (check man lsdev for more precisions about errors).
+# 9) History                :
+#  2010/10/29 (S. Ballaud) Initial version.
+function list_aix_disk 
+{
+	lsdev -C -c disk -H
+
+}
+
+# 10) Function               : count_aix_fsfiles
+# 10) Purpose                : Count the number of files that containt a filesystem
+# 10) Notes                  : This function use the standard output for return value. The procedure use the /etc/filesystems to get is fs list.
+# 10) Version                : 1.0
+# 10) Syntax                 : count_aix_fsfiles
+# 10) Optionals Parameters   : Nothing
+# 10) Mandatories Parameters : Nothing 
+# 10) Example                : count_aix_fsfiles
+# 10) Return                 : 0=success or !0=failed (check man lsdev for more precisions about errors).
+# 10) History                :
+#  2010/10/29 (S. Ballaud) Initial version.
+function count_aix_fsfiles
+{
+for _fs in `egrep "^\/" /etc/filesystems | tr -d ":"`
+do
+ echo ${_fs} `find ${_fs} 2>/dev/null | wc -l ` files 
+done
+}

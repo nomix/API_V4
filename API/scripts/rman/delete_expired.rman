@@ -1,0 +1,7 @@
+# This script deletes all the expired backup from recovery catalog.
+# Show the configuration
+SHOW ALL;
+
+DELETE NOPROMPT EXPIRED BACKUP;
+DELETE NOPROMPT EXPIRED ARCHIVELOG ALL;
+EXIT;

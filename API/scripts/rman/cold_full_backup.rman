@@ -1,0 +1,21 @@
+# This script perform a full hot backup of an oracle database.
+# Database must be available for this operation to succeed.
+SHOW ALL;
+
+# Shutdown the database
+SHUTDOWN IMMEDIATE; 
+
+# Open the database and close it again (perform a recovery in case of bad shutdown)
+STARTUP FORCE DBA; 
+SHUTDOWN IMMEDIATE; 
+
+# Now the database is clean, mount it to perform the backup
+STARTUP MOUNT;
+
+# Perform the backup
+backup full database;
+
+# Now that the backup is complete, open the database. 
+ALTER DATABASE OPEN; 
+
+EXIT;

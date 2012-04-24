@@ -1,0 +1,4 @@
+set newpassword [lindex $argv 0]
+set ldapuserregistry [$AdminConfig list LDAPUserRegistry]
+$AdminConfig modify $ldapuserregistry [list [list serverPassword $newpassword]]
+$AdminConfig save

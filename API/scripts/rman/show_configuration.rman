@@ -1,0 +1,4 @@
+# This script show all the RMAN configuration
+# The database must be available
+SHOW ALL;
+

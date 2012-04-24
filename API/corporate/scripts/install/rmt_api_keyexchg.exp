@@ -1,0 +1,33 @@
+#!/usr/bin/expect
+send "export LANG=C\r"
+set log_user 1
+set timeout -1
+spawn ssh api@[lindex $argv 0] "export LANG=C;ssh-keygen -t rsa"
+expect "*password:"
+send "[lindex $argv 1]\r"
+expect "Enter file in *"
+send "\r"
+expect {
+	"Enter passphrase (empty for no passphrase):" {
+		send "\r"
+	} 
+	"Overwrite (y/n)?" {
+        	send "y\r"
+		expect "Enter passphrase (empty for no passphrase):"
+		send "\r"
+    	}
+}
+expect "Enter same passphrase again:"
+send "\r"
+expect "*[lindex $argv 0]/*#"
+spawn scp api_pars000i0028.rsa_key.pub api@[lindex $argv 0]:.ssh/
+expect "*password:"
+send "[lindex $argv 1]\r"
+expect "*pars000i0028*#"
+spawn ssh api@[lindex $argv 0] "/usr/bin/cat ~/.ssh/api_pars000i0028.rsa_key.pub >> ~/.ssh/authorized_keys"
+expect "*password:"
+send "[lindex $argv 1]\r"
+expect "*pars000i0028*#"
+exit
+expect eof
+exit

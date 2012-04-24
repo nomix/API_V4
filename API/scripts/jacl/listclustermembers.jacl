@@ -1,0 +1,2 @@
+set cmlist [$AdminConfig list ClusterMember]
+puts $cmlist

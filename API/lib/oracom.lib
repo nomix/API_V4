@@ -1,0 +1,258 @@
+#!/bin/ksh
+# Copyright 2010 XPRESS2PEOPLE
+# File                   : oracom.lib
+# Created on             : 2009/07/16
+# Family                 : ORACLE
+# Purpose 1              : This file contains essentials functions for the interraction with Oracle databases.
+# Purpose 2              : It can be loaded by other oracle libraries.
+# Developpers            :
+#   Simon Ouellet can be reached at <simon.ouellet@x2p.fr>
+#   Benoit Garcia can be reached at <benoit.garcia@x2p.fr>
+#   Sylvain Ballaud can be reached at <sylvain.ballaud@x2p.fr>
+# History                : 
+#  2009/07/16 (B. Garcia) Initial version from oracomlib.fnc by Simon Ouellet.
+#  2010/03/18 (S. Ouellet) segregate the oracle.lib into specific lib
+#  2010/08/25 (B. Garcia) Update of headers and various fixes and cleaning
+#  2010/09/03 (S. Ballaud) Modifications about the name of functions  
+#######
+#WARNING : THIS LIB CAN BE INCLUDE IN OTHER LIBRARIES
+#PLEASE LIST LIBRAIRIES USING THIS ONE
+#CHILD LIB: orainfo.lib,
+
+## Variable declaration ##
+###############################################
+if [[ -z ${APIHOME} ]];
+then
+ echo "*************************************************************"
+ echo "WARNING! api.conf have not been source\nPlease source it : . API_PATH/conf/api.conf"
+ echo "*************************************************************"
+fi
+###############################################
+. ${APIHOME}/conf/oracle.conf
+
+## Function declaration ##
+
+# 1) Function               : set_ora_env
+# 1) Purpose                : Set the Oracle environnement for a specified SID.
+# 1) Notes                  : /etc/oratab must exist and must be filled.
+# 1) Version                : 1.0
+# 1) Syntax                 : set_ora_env <SID>
+# 1) Optionals Parameters   : Nothing
+# 1) Mandatories Parameters : <SID : System ID>
+# 1) Example                : set_ora_env 18
+# 1) Return                 : 1 in case of error. 0 otherwise.
+# 1) History                :
+#   2009/07/16 (B. Garcia) Initial version from oracomlib.fnc by S. Ouellet.
+set_ora_env() {
+  typeset -u $1 # SET SID IN UPPERCASE
+  if [[ `egrep -i "^${1}:" /etc/oratab | wc -l` -ne 1 ]]
+  then
+   return 1 # SID NOT FOUND IN THE ORATAB
+  fi
+  export ORACLE_SID=$1
+  export ORACLE_HOME=`awk -F: "/^${ORACLE_SID}:/ {print \\$2; exit}" /etc/oratab 2>/dev/null`
+  AP2_DBADMINPATH=${AP2_DBADMINPATH}/${ORACLE_SID}
+  AP2_DB_SCRIPTPATH=${AP2_DBADMINPATH}/${ORACLE_SID}/scripts
+}
+# set_ora_env end
+
+# 2) Function               : run_ora_sql
+# 2) Purpose                : run an sql query as a specified user.
+# 2) Notes                  : ORACLE_HOME & ORACLE_SID must be set.
+# 2) Version                : 1.0
+# 2) Syntax                 : run_ora_sql <user> <password> <sql_query>
+# 2) Optionals Parameters   : Nothing
+# 2) Mandatories Parameters : <user> <password> and <sql_query>
+# 2) Example                : run_ora_sqlscript root admin "SELECT * FROM matable"
+# 2) Return                 : 0 if the query succeed; sqlplus return code otherwise.
+# 2) History                :
+#   2009/07/16 (B. Garcia) Initial version from oracomlib.fnc by S. Ouellet.
+run_ora_sql() {
+  ${ORACLE_HOME}/bin/sqlplus -S /nolog<<EOS
+connect ${1}/${2}
+set pages 0
+set lines 200
+set head OFF
+ttitle off
+btitle off
+WHENEVER SQLERROR EXIT SQL.SQLCODE
+WHENEVER OSERROR EXIT
+${3};
+exit
+EOS
+  return $?
+}
+# run_ora_sqlscript end
+
+# 3) Function               : run_ora_sqldba
+# 3) Purpose                : run an sql query as sysdba.
+# 3) Notes                  : ORACLE_HOME & ORACLE_SID must be set.
+# 3) Version                : 1.0
+# 3) Syntax                 : run_ora_sqldba <sql_query>
+# 3) Optionals Parameters   : Nothing
+# 3) Mandatories Parameters : <sql_query>
+# 3) Example                : run_ora_sqldba "SELECT * FROM matable"
+# 3) Return                 : 0 if the query succeed; sqlplus return code otherwise.
+# 3) History                :
+#   2009/07/16 (B. Garcia) Initial version from oracomlib.fnc by S. Ouellet.
+run_ora_sqldba() {
+  ${ORACLE_HOME}/bin/sqlplus -S /nolog<<EOS
+connect / as sysdba
+set pages 0
+set lines 200
+set head OFF
+ttitle off
+btitle off
+WHENEVER SQLERROR EXIT SQL.SQLCODE
+WHENEVER OSERROR EXIT
+${1};
+exit
+EOS
+  return $?
+}
+# run_ora_sqlscriptdba end
+
+# 4) Function               : run_ora_sqlscriptspc
+# 4) Purpose                : run an sql query as a specified user.
+# 4) Notes                  : ORACLE_HOME & ORACLE_SID must be set.
+# 4) Version                : 1.0
+# 4) Syntax                 : run_ora_sqlscriptspc <user> <password> <sql_query>
+# 4) Optionals Parameters   : Nothing
+# 4) Mandatories Parameters : <user> <password> and <sql_query>
+# 4) Example                : run_ora_sqlscriptspc root admin "SELECT * FROM matable"
+# 4) Return                 : 0 if the query succeed; sqlplus return code otherwise.
+# 4) History                :
+#   2009/07/16 (B. Garcia) Initial version from oracomlib.fnc by S. Ouellet.
+run_ora_sqlscriptspc() {
+  ${ORACLE_HOME}/bin/sqlplus -S /nolog<<EOS
+connect ${1}/${2}
+set pages 0
+set lines 200
+set head OFF
+ttitle off
+btitle off
+WHENEVER SQLERROR EXIT SQL.SQLCODE
+WHENEVER OSERROR EXIT
+${3};
+exit
+EOS
+  return $?
+}
+# run_ora_sqlscriptspc end
+
+# 5) Function               : get_ora_oratab
+# 5) Purpose                : List the /etc/oratab content 
+# 5) Notes                  : 
+# 5) Version                : 1.0
+# 5) Syntax                 : get_ora_oratab [SID]
+# 5) Optionals Parameters   : [SID]
+# 5) Mandatories Parameters : Nothing
+# 5) Example                : get_ora_oratab, get_ora_oratab ORCL01
+# 5) Return                 : 0=ok,1=/etc/oratab file not found,2=SID specified doesnt exist in the /etc/oratab 
+# 5) History                :
+#   2010/10/18 (S. Ouellet) Initial version by S. Ouellet.
+get_ora_oratab() {
+ if [[ -f /etc/oratab ]]
+ then
+  if [[ -n ${1} ]] # If a SID is specified as arguments
+  then 
+   if [[ `egrep -i "^${1}:" /etc/oratab | wc -l` -eq 1 ]] # check if the entry is found in the /etc/oratab 
+   then # Entry found
+    egrep -i "^${1}:" /etc/oratab
+   else # Entry not found
+    return 2
+   fi
+  else
+   for _oratab_entry in `egrep -v "^#" /etc/oratab | egrep -i "^[A-Z]"` 
+   do
+    echo ${_oratab_entry}
+   done
+   return 0
+  fi
+ else
+  echo "No /etc/oratab file"
+  return 1
+ fi
+}
+# get_ora_oratab end
+
+# 6) Function               : get_ora_sidlist
+# 6) Purpose                : List all SID from the /etc/oratab
+# 6) Notes                  :
+# 6) Version                : 1.0
+# 6) Syntax                 : get_ora_sidlist
+# 6) Optionals Parameters   : None
+# 6) Mandatories Parameters : None
+# 6) Example                : get_ora_sidlist
+# 6) Return                 : 0=ok,1=/etc/oratab file not found
+# 6) History                :
+#   2010/10/18 (S. Ouellet) Initial version by S. Ouellet.
+get_ora_sidlist() {
+ if [[ -f /etc/oratab ]]
+ then
+  egrep -v "^#" /etc/oratab | egrep -i "^[A-Z]" | awk -F":" '{ print $1 }'
+  return 0
+ else
+  echo "No /etc/oratab file"
+  return 1
+ fi
+}
+# get_ora_sidlist end
+
+# 7) Function               : get_ora_oh
+# 7) Purpose                : Get the Oracle Home from the /etc/oratab from the /etc/oratab
+# 7) Notes                  :
+# 7) Version                : 1.0
+# 7) Syntax                 : get_ora_oh [SID]
+# 7) Optionals Parameters   : [SID]
+# 7) Mandatories Parameters : None
+# 7) Example                : get_ora_oh
+# 7) Return                 : 0=ok,1=/etc/oratab file not found
+# 7) History                :
+#   2010/10/18 (S. Ouellet) Initial version by S. Ouellet.
+get_ora_oh() {
+ if [[ -f /etc/oratab ]]
+ then
+  if [[ -n ${1} ]] # If a SID is specified as arguments
+  then
+   egrep -v "^#" /etc/oratab | egrep -i "^${1}:" | awk -F":" '{ print $2 }'
+  else # Print all oh from the /etc/oratab
+   egrep -v "^#" /etc/oratab | egrep -i "^[A-Z]" | awk -F":" '{ print $2 }'
+  fi
+  return 0
+ else
+  echo "No /etc/oratab file"
+  return 1
+ fi
+}
+# get_ora_oh end
+
+# 8) Function               : get_ora_activesidlist
+# 8) Purpose                : List only active SID from the /etc/oratab
+# 8) Notes                  :
+# 8) Version                : 1.0
+# 8) Syntax                 : get_ora_activesidlist
+# 8) Optionals Parameters   : None
+# 8) Mandatories Parameters : None
+# 8) Example                : get_ora_activesidlist
+# 8) Return                 : 0=ok,1=/etc/oratab file not found
+# 8) History                :
+#   2010/10/18 (S. Ouellet) Initial version by S. Ouellet.
+get_ora_activesidlist() {
+ if [[ -f /etc/oratab ]]
+ then
+  for _oratab in `egrep -v "^#" /etc/oratab | egrep -i "^[A-Z]"`
+  do
+   if [[ `echo ${_oratab} | awk -F":" '{ print $3 }'` == "Y" ]]
+   then
+    echo ${_oratab} | awk -F":" '{ print $1 }'
+   fi
+  done
+  return 0
+ else
+  echo "No /etc/oratab file"
+  return 1
+ fi
+}
+# get_ora_activesidlist end
+

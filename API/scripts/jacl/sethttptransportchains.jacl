@@ -1,0 +1,70 @@
+
+c set_HTTPTransport {sname sport} {
+
+
+###
+### set up globals
+###
+
+global AdminConfig
+global AdminControl
+global AdminApp
+
+
+set cells [$AdminConfig list Cell]
+
+foreach cell $cells {
+     set cname [$AdminConfig showAttribute $cell name]
+     set nodes [$AdminConfig list Node $cell]
+
+     puts " "
+     puts "Cell: $cname         "
+
+     foreach node $nodes {
+
+        set nname [$AdminConfig showAttribute $node name]
+
+        set serverid [$AdminConfig getid /Cell:$cname/Node:$nname/Server:$sname/]
+
+        if {[llength $serverid] == 0} {
+           continue 
+        }
+
+        puts " "
+        puts "Node: $nname            "
+        puts "Server: $sname"
+
+        set httptransport [$AdminConfig list  HTTPTransport $serverid]
+   
+        set xattrs [list [list address [list [list port $sport]]] [list external false] [list sslEnabled false]]
+
+        $AdminConfig modify $httptransport $xattrs
+        # $AdminConfig modify $httptransport {{address {{host {}}{port 9092}}}{external false}{properties {}}{sslEnabled false}}
+
+
+
+     }
+}
+
+$AdminConfig save
+
+}
+
+
+
+###
+### Main
+###
+###
+
+
+if { !($argc == 2) } {
+   puts ""
+   puts "Usage: , "
+   puts " "
+   puts "wsadmin.sh -username system -password password -f set_HTTPTransport.jacl server port 
+} else { 
+   set xserver      [lindex $argv 0]  
+   set xport      [lindex $argv 1]  
+   set_HTTPTransport $xserver $xport
+}

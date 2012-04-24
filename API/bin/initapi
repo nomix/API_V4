@@ -1,0 +1,246 @@
+#!/bin/ksh
+# Copyright 2010 XPRESS2PEOPLE
+# SYNTAXE : initapi [-l] [-c] [-v] [trigram's lib familly]
+# RETURN  : RC=0 : ok, RC <> 0 = error
+# Version 4.0.r110 07 september 2010 by S.OUELLET : handle the load from /usr/bin/initapi 
+#						    export APIHOME
+#						    load api lib and conf all the time
+#						    add the switch -d to not load by default the api lib and conf
+# Version 4.0.r90  26 august    2010 by S.OUELLET : bug fix. Dont try to load conf or lib when it doesnt exist.
+#						    Autoconfiguration feature
+# Version 4.0.r89  26 august    2010 by S.OUELLET : add : switch -f (do not load conf and load only lib) + message on load conf
+# Version 4.0.r88  26 august    2010 by S.OUELLET : add : automatic librairies loading and verbose mode
+# Version 4.0.r85  25 august    2010 by S.OUELLET : initial version
+
+### PARAMETERS
+##############
+_CURRENT_API_PATH=/home/api/APIX2P
+RC=0 # initialize the return code
+_load_all="false"
+_do_not_load_api="false"
+_load_lib="true"
+_load_conf="true"
+_verbose_mode="off"
+
+### FUNCTIONS
+#############
+
+_final() {
+ _final_rc=${RC}
+ unset RC _check_if_api_path_is_set _check_if_launched_with_dot _list_api_familly _load_familly_conf _load_familly_lib _loader _save_api_path
+ unset _set_api_path _show_init_help
+ unset _do_not_load_api _familly_lib_filename _familly_to_load _file_conf _load_all _load_conf _load_lib _rc _verbose_mode opt
+ set ""
+ return ${_final_rc}
+}
+
+# Return 0=ok, 1=not configured, 2=configured but no dir found.
+_check_if_api_path_is_set() {
+ if [[ ${_CURRENT_API_PATH} == "" ]];
+ then
+  return 1 # _CAP not configured
+ else
+  if [[ -d ${_CURRENT_API_PATH} ]];
+  then
+   return 0 # _CAP configured and directory exist
+  else
+   return 2 # _CAP configured but badly
+  fi
+ fi
+}
+
+# Return 0=. ./,1=./
+_check_if_launched_with_dot() {
+ if [[ ${0} == "-ksh" ]];
+ then
+  return 1 # Execute with dot
+ else
+  return 1 # Not executed with dot
+  #return 0 # Not executed with dot
+ fi
+}
+
+_save_api_path() {
+ _CAP=`echo ${1} | sed 's/\//\\\\\//g'`
+ echo "s/^\(_CURRENT_API_PATH\)=\(.*\)/\1=${_CAP}/g" > /tmp/current_api_path.sed
+ sed -f /tmp/current_api_path.sed ${_CURRENT_API_PATH}/bin/initapi > ${1}/bin/initapi.tmp
+ mv ${1}/bin/initapi.tmp ${1}/bin/initapi
+ chmod 754 ${1}/bin/initapi
+ rm /tmp/current_api_path.sed
+}
+
+_set_api_path() { 
+ # Set the API Bin directory
+ _CURRENT_APIBIN_PATH=`dirname ${0}`
+ # Check if it's the /usr/bin/initapi
+ if [[ -L ${0} ]]; # check if it's the link or the real one
+ then # initapi is a link
+  _initapi_link=`ls -l /usr/bin/initapi | awk -F">" '{ print $2 }'`  
+  # Save the current path
+  _STORED_PATH=`pwd`
+  cd `dirname ${_initapi_link}`
+  cd ..
+  _CURRENT_API_PATH=`pwd`
+  #echo "Current API path : $_CURRENT_API_PATH" # For debug purpose
+  #back to the stored path
+  cd ${_STORED_PATH}
+ else # initapi is the true one
+  # Save the current path
+  _STORED_PATH=`pwd`
+  cd ${_CURRENT_APIBIN_PATH}
+  cd ..
+  _CURRENT_API_PATH=`pwd`
+  #echo "Current API path : $_CURRENT_API_PATH" # For debug purpose
+  #back to the stored path
+  cd ${_STORED_PATH}
+ fi # end of check initapi link or not
+ export APIHOME=${_CURRENT_API_PATH}
+}
+
+_show_init_help() {
+ echo "initapi [-a] [-c] [-d] [-f] [-l] [-v] [trigram's lib familly]"
+ echo "-a : load all familly."
+ echo "-d : do not load by default the api lib and conf."
+ echo "-c : load only the configuration. (dont load librairies)."
+ echo "-f : load only the librairies. (dont load configurations)."
+ echo "-l : list all familly available."
+ echo "-v : verbose mode"
+}
+
+_list_api_familly() {
+ _FAMLIST=""
+ for _familly in `cat ${_CURRENT_API_PATH}/conf/apitab | awk -F":" '{ print $1 }'`
+ do
+  if [[ `echo ${_FAMLIST} | grep ${_familly} | wc -l` -eq 0 ]]
+  then
+   echo ${_familly}
+   _FAMLIST="${_FAMLIST} ${_familly}" 
+  fi
+ done
+}
+
+_load_familly_conf() {
+  _file_conf=`egrep "^${1}:" ${_CURRENT_API_PATH}/conf/apitab | awk -F":" '{ print $2 }'`
+  if [[ ${_verbose_mode} == "on" && ${_file_conf} != "none" ]];
+  then
+   echo "Loading configuration ${_CURRENT_API_PATH}/conf/${_file_conf}."
+  fi
+  if [[ ${_file_conf} != "none" ]]; then # Check if on conf file is not set to "none"
+   . ${_CURRENT_API_PATH}/conf/${_file_conf}
+   let RC=${RC}+${?}
+  fi
+}
+
+_load_familly_lib() {
+ for _familly_lib_filename in `ls ${_CURRENT_API_PATH}/lib/ | egrep "^${1}"`
+ do
+  . ${_CURRENT_API_PATH}/lib/${_familly_lib_filename} 
+  _rc=$?
+  let RC=${RC}+${?}
+  if [[ ${_rc} -eq 0 && ${_verbose_mode} == "on" ]];
+  then
+   echo "Libairie ${_familly_lib_filename} successfully loaded."
+  fi
+ done 
+}
+
+_loader() {
+ for _familly_to_load in $@
+ do
+  if [[ `echo ${_familly_to_load} | egrep "^-" | wc -l` -eq 0 ]]; # if argument is not an option
+  then
+   if [[ ${_load_conf} != "false" ]]; # handle the load or not configuration file
+   then
+    _load_familly_conf ${_familly_to_load}
+   fi
+   if [[ ${_load_lib} != "false" ]]; # handle the load or not librairies
+   then
+    _load_familly_lib ${_familly_to_load}
+   fi 
+  fi
+ done
+}
+
+#typeset -ft _check_if_api_path_is_set
+#typeset -ft _check_if_launched_with_dot
+#typeset -ft _save_api_path
+#typeset -ft _set_api_path
+#typeset -ft _set_api_path
+#typeset -ft _loader
+#typeset -ft _load_familly_conf
+#typeset -ft _load_familly_lib
+### MAIN
+########
+
+OPTIND=1
+while getopts "acdflvk" opt;
+do
+case $opt in
+ a) _load_all="true";;
+ d) _do_not_load_api="true";;
+ c) _load_lib="false";;
+ f) _load_conf="false";;
+ l) _list_api_familly 
+    return 0;;
+ v) _verbose_mode="on";;
+ k) echo "ksh fix";;
+ *) _show_init_help;;
+esac
+done
+shift ${OPTIND}-1
+
+_check_if_api_path_is_set
+if [[ $? -ne 0 ]]; #1 if the api_path is not set
+then #1 api_path not set. Return = 1 or 2
+ _check_if_launched_with_dot
+ if [[ $? -eq 1 ]]; #2 if the script have been executed with dot
+ then #2 execute with dot (. ./initapi)
+  clear
+  echo "ERROR. Script not configured properly."
+  echo "Execute the script at least one time without the dot. ex.: /usr/bin/initapi instead of . /usr/bin/initapi"
+  echo "This will autoconfigure the script."
+  echo "After that, you'll be able to execute it with the dot."
+  return 1
+ else #2 not executed with dot (./initapi)
+  clear
+  echo "Autoconfiguration process.."
+  _set_api_path
+  _save_api_path ${_CURRENT_API_PATH}
+  if [[ $? -eq 0 ]]; #3
+  then #3
+   echo "Warning! The script is now configured, but nothing have been loaded.\nExecute the script with the (dot)(space) in front to source it.\nLike this : . /usr/bin/initapi"
+   return 0
+  else #3
+   echo "ERROR found! Please check your installation. Contact api@x2p.fr"
+   return 1
+  fi #3
+ fi #2
+else #1 api_path is set
+ _check_if_launched_with_dot
+ if [[ $? -eq 1 ]]; #4 if the script have been executed with dot
+ then # . ./
+  . ${_CURRENT_API_PATH}/conf/api.conf
+ else #4 ./
+  echo "WARNING! You'll not load something in this way!"
+  echo "Use the sourcing dot method ex.: . /usr/bin/initapi"
+  return 1
+ fi #4
+fi #1
+
+if [[ $# -eq 0 && ${_load_all} == "false" ]]; # Check arguments
+then # No arguments, show help
+ _show_init_help
+else # Ok, arguments, go for loading
+ if [[ ${_load_all} == "true" ]]; # Check if it's for "all" familly
+ then # It's for all
+  _loader `_list_api_familly`
+ else # It's not for all
+  if [[ ${_do_not_load_api} != "true" ]];
+  then
+   _loader api
+  fi
+  _loader $@
+ fi
+fi
+
+_final

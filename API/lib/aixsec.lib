@@ -1,0 +1,713 @@
+#!/bin/ksh
+# Copyright 2010 XPRESS2PEOPLE
+# File                   : aixsec.lib
+# Created on             : 2010/08/30
+# Family                 : AIX
+# Purpose                : This file contains the security functions for the administration and the management AIX.
+# Developpers            :
+#  Simon Ouellet can be reached at <simon.ouellet@x2p.fr>
+#  Sylvain Ballaud can be reached at <sylvain.ballaud@x2p.fr>
+# History                :
+#  2010/08/30 (S. Ouellet) Initial version by S. Ouellet
+
+# 1) Function               : get_aix_userlist 
+# 1) Purpose                : Display the list of all users of an AIX server.
+# 1) Notes                  : This function uses the standard output for return value.
+# 1) Version                : 1.0
+# 1) Syntax                 : get_aix_userlist
+# 1) Optionals Parameters   : Nothing.
+# 1) Mandatories Parameters : Nothing.
+# 1) Example                : get_aix_userlist
+# 1) Return                 : 0=success or !0=failed (check man lsuser for more precisions about errors)  
+# 1) History                :
+#   2010/09/06 (S. Ballaud) Initial version 
+function get_aix_userlist
+{
+	# Affichage des utilisateurs
+	lsuser -a ALL 
+	
+	# Fin de la fonction 
+	return ${?}
+} 
+
+# 2) Function               : get_aix_userpwdPWDpolitics 
+# 2) Purpose                : Verify if the politic of password is applied in the file conf/polpwdtab 
+# 2) Notes                  : Configure the path of the api in the file conf/api.conf. You must be root.
+# 2) Version                : 1.1
+# 2) Syntax                 : get_aix_userpwdpolitics <user>
+# 2) Optionals Parameters   : Nothing.
+# 2) Mandatories Parameters : <user>
+# 2) Example                : get_aix_userpwdpolitics toto
+# 2) Return                 : 0=the politic is applied or 1=the politic is not applied 
+# 2) History                :
+#   2010/09/06 (S. Ballaud) Initial version
+#   2010/09/09 (S. Ballaud) Modification about return values 
+function get_aix_userpwdpolitics
+{
+	# Definition de variables
+	user=${1}
+
+	# Lecture depuis le fichier polpwdtab
+	length_min=$(cat ${APIHOME}/conf/polpwdtab | grep "gen:length_min:" | awk -F ":" '{print $3}')
+	nb_char_alpha=$(cat ${APIHOME}/conf/polpwdtab | grep "gen:nb_char_alpha:" | awk -F ":" '{print $3}')
+	nb_char_noalpha=$(cat ${APIHOME}/conf/polpwdtab | grep "gen:nb_char_noalpha:" | awk -F ":" '{print $3}')
+	duration_expiration=$(cat ${APIHOME}/conf/polpwdtab | grep "gen:duration_expiration:" | awk -F ":" '{print $3}')
+	history_cycle=$(cat ${APIHOME}/conf/polpwdtab | grep "gen:history_cycle:" | awk -F ":" '{print $3}')
+	attempts_connections=$(cat ${APIHOME}/conf/polpwdtab | grep "gen:attempts_connections:" | awk -F ":" '{print $3}')
+	
+	# Captures des champs de l'utilisateur 
+	min_len=$(lsuser -a minlen ${user} | awk '{print $2}' | awk -F "=" '{print $2}')
+	min_alpha=$(lsuser -a minalpha ${user} | awk '{print $2}' | awk -F "=" '{print $2}')
+	min_other=$(lsuser -a minother ${user} | awk '{print $2}' | awk -F "=" '{print $2}')
+	max_age=$(lsuser -a maxage ${user} | awk '{print $2}' | awk -F "=" '{print $2}')
+	hist_size=$(lsuser -a histsize ${user} | awk '{print $2}' | awk -F "=" '{print $2}')
+	login_retries=$(lsuser -a loginretries ${user} | awk '{print $2}' | awk -F "=" '{print $2}')
+
+	# Y'a le nb de caracteres min ?
+	if [[ ${min_len} -ne ${length_min} ]]
+	then
+		# Non donc on quitte la fonction
+		return 1
+	fi
+
+	# Y'a le nb de caracteres alphabetiques attendu ?
+	if [[ ${min_alpha} -ne ${nb_char_alpha} ]]
+	then
+		# Non donc on quitte la fonction
+		return 1
+	fi
+
+	# Y'a le nb de caracteres alphabetiques attendu ?
+	if [[ ${min_other} -ne ${nb_char_noalpha} ]]
+	then	
+		# Non donc on quitte la fonction
+		return 1
+	fi
+	
+	# Y'a le nb de jours avant expiration ?
+	if [[ ${max_age} -ne ${duration_expiration} ]]
+	then
+		# Non donc on quitte la fonction
+		return 1
+	fi
+
+	# Y'a le nb de cycle d'historique ?
+	if [[ ${hist_size} -ne ${history_cycle} ]]
+	then
+		# Non donc on quitte la fonction
+		return 1
+	fi
+
+	# Y'a le nb d'erreur d'auth avant verrouillage ?
+	if [[ ${login_retries} -ne ${attempts_connections} ]]
+	then
+		# Non donc on quitte la fonction
+		return 1
+	else
+		# Oui donc on quitte la fonction
+		return 0
+	fi
+}
+ 
+# 3) Function               : reset_aix_trylogin 
+# 3) Purpose                : Reset the number of attempts of login.
+# 3) Notes                  : You must be root.
+# 3) Version                : 1.2
+# 3) Syntax                 : reset_aix_trylogin <user>
+# 3) Optionals Parameters   : Nothing.
+# 3) Mandatories Parameters : <user>
+# 3) Example                : reset_aix_trylogin toto
+# 3) Return                 : 0=success or !0=failed (check man chsec for more precisions about errors)  
+# 3) History                :
+#   2010/09/06 (S. Ballaud) Initial version
+#   2010/09/09 (S. Ballaud) Modification about return values
+#   2010/10/01 (S. Ballaud) Use verbose file for redirection of stderr and change name of the function
+function reset_aix_trylogin
+{
+	# Definition de variables
+	user=${1}
+
+	# Déverrouillage de l'utilisateur  
+	chsec -f /etc/security/lastlog -a "unsuccessful_login_count=0" -s ${user} >/dev/null
+
+	# Fin de la fonction 
+	return ${?}
+} 
+
+# 4) Function               : get_aix_stnbfailedlog 
+# 4) Purpose                : Verify if a user is lock because he did too many unssuccessful login. 
+# 4) Notes                  : You must be root.
+# 4) Version                : 1.1
+# 4) Syntax                 : get_aix_stnbfailedlog <user>
+# 4) Optionals Parameters   : Nothing.
+# 4) Mandatories Parameters : <user>
+# 4) Example                : get_aix_stnbfailedlog toto
+# 4) Return                 : 0=unlock or 1=lock 
+# 4) History                :
+#   2010/09/06 (S. Ballaud) Initial version
+function get_aix_stnbfailedlog
+{
+        # Definition de variables
+        user=${1}
+	
+	# Lecture depuis le fichier politictab 
+	attempts_connections=$(cat ${APIHOME}/conf/polpwdtab | grep "gen:attempts_connections:" | awk -F ":" '{print $3}')
+
+	# Capture d'un champ de l'utilisateur
+        status_lock=$(lsuser -a unsuccessful_login_count ${user} | awk '{print $2}' | awk -F "=" '{print $2}')
+
+        # Est-il bloque ? 
+        if [[ ${status_lock} -gt ${attempts_connections} ]]
+        then
+                # Oui
+                return 1
+	else
+		# Non
+		return 0
+        fi
+}
+
+# 5) Function               : get_aix_nbfailedlog 
+# 5) Purpose                : Get the number of unsuccessful login. 
+# 5) Notes                  : You must be root.
+# 5) Version                : 1.0
+# 5) Syntax                 : get_aix_nbfailedlog <user>
+# 5) Optionals Parameters   : Nothing.
+# 5) Mandatories Parameters : <user>
+# 5) Example                : get_aix_nbfailedlog toto
+# 5) Return                 : The number of unsuccessful login 
+# 5) History                :
+#   2010/09/06 (S. Ballaud) Initial version
+function get_aix_nbfailedlog
+{
+        # Definition de variables
+        user=${1}
+
+	# Capture d'un champ de l'utilisateur
+        nb_failed_log=$(lsuser -a unsuccessful_login_count ${user} | awk '{print $2}' | awk -F "=" '{print $2}')
+
+	# Retour du nombre d'authentification rate
+	return ${nb_failed_log}
+}
+
+# 6) Function               : lock_aix_user 
+# 6) Purpose                : Lock a user. 
+# 6) Notes                  : You must be root.
+# 6) Version                : 1.0
+# 6) Syntax                 : lock_aix_user <user>
+# 6) Optionals Parameters   : Nothing.
+# 6) Mandatories Parameters : <user>
+# 6) Example                : lock_aix_user toto
+# 6) Return                 : 0=lock success or !0=lock failed (check man chuser for more precisions about errors) 
+# 6) History                :
+#   2010/10/01 (S. Ballaud) Initial version
+function lock_aix_user 
+{
+	# Definition de variables
+	user=${1}
+
+	# Bloque l'utilisateur
+	chuser account_locked=yes ${user}
+	
+	# Fin de la fonction
+	return ${?}
+}
+
+# 7) Function               : unlock_aix_user 
+# 7) Purpose                : Unlock a user. 
+# 7) Notes                  : You must be root.
+# 7) Version                : 1.0
+# 7) Syntax                 : unlock_aix_user <user>
+# 7) Optionals Parameters   : Nothing.
+# 7) Mandatories Parameters : <user>
+# 7) Example                : unlock_aix_user toto
+# 7) Return                 : 0=lock success or !0=lock failed (check man chuser for more precisions about errors) 
+# 7) History                :
+#   2010/10/01 (S. Ballaud) Initial version
+function unlock_aix_user 
+{
+	# Definition de variables
+	user=${1}
+
+	# Bloque l'utilisateur
+	chuser account_locked=false ${user}
+
+	# Fin de la fonction
+	return ${?}
+}
+
+# 8) Function               : get_aix_stlockuser 
+# 8) Purpose                : Verify if a user is lock by the administrator. 
+# 8) Notes                  : You must be root.
+# 8) Version                : 1.0
+# 8) Syntax                 : get_aix_stlockuser <user>
+# 8) Optionals Parameters   : Nothing.
+# 8) Mandatories Parameters : <user>
+# 8) Example                : get_aix_stlockuser toto
+# 8) Return                 : 0=lock or 1=unlock 
+# 8) History                :
+#   2010/10/07 (S. Ballaud) Initial version
+function get_aix_stlockuser 
+{
+	# Definition de variables
+	user=${1}
+	
+	# Capture d'un champ de l'utilisateur
+        stlock=$(lsuser -a account_locked ${user} | awk '{print $2}' | awk -F "=" '{print $2}')
+
+	# Est que l'utilisateur est bloque ?
+	if [[ ${stlock} == "true" ]]
+	then
+		# Oui
+		return 1
+	else
+		# Non
+		return 0
+	fi	
+}
+
+# 9) Function               : modify_aix_uid
+# 9) Purpose                : Modify an old UID of all files and directory of a root directory.
+# 9) Notes                  : You must be root.
+# 9) Version                : 1.0
+# 9) Syntax                 : modify_aix_uid <root_directory> <old_UID> <new_UID>
+# 9) Optionals Parameters   : Nothing
+# 9) Mandatories Parameters : <root_directory>, <old_UID> and <new_UID>
+# 9) Example                : modify_aix_uid /etc 12 1012
+# 9) Return                 : 0=success or !0=failed
+# 9) History                :
+#  2010/10/05 (S. Ballaud) Initial version.
+function modify_aix_uid
+{
+        # Declaration des variables
+        dir=${1}
+        old_uid=${2}
+        new_uid=${3}
+
+        # Exploration du repertoire de base
+        for file in $(find ${dir} -exec ls -d {} \; 2>/dev/null)
+        do
+                # Est ce que l'element est un fichier ?
+                if [[ -f ${file} ]]
+                then
+                        # Oui et est ce que le proprietaire du fichier a pour UID old_uid
+                        if [[ $(ls -ln ${file} | awk '{print $3}') -eq ${old_uid} ]]
+                        then
+                                # Oui donc on change d'UID
+                                chown ${new_uid} ${file}
+
+				# Affectation de la valeur retour
+				result=${?}
+
+                                # La commande a t-elle fonctionne ?
+                                if [[ ${result} -ne 0 ]]
+                                then
+                                        # Non donc on quitte la fonction
+                                        return ${result}
+                                fi
+                        fi
+                fi
+
+ 		# Est ce que l'element est un repertoire ?
+                if [[ -d ${file} ]]
+                then
+                        # Oui et est ce le proprietaire du repertoire a pour UID old_uid
+                        if [[ $(ls -ldn ${file} | awk '{print $3}') -eq ${old_uid} ]]
+                        then
+                                # Oui donc on change d'UID
+                                chown ${new_uid} ${file}
+				
+				# Affectation de la valeur retour
+				result=${?}
+
+                                # La commande a t-elle fonctionne ?
+                                if [[ ${result} -ne 0 ]]
+                                then
+                                        # Non donc on quitte la fonction
+                                        return ${result}
+                                fi
+                        fi
+                fi
+        done
+
+        # Fin de la fonction
+        return 0
+}
+
+# 10) Function               : modify_aix_gid
+# 10) Purpose                : Modify an old GID of all files and directory of a root directory.
+# 10) Notes                  : You must be root.
+# 10) Version                : 1.0
+# 10) Syntax                 : modify_aix_gid <root_directory> <old_GID> <new_GID>
+# 10) Optionals Parameters   : Nothing
+# 10) Mandatories Parameters : <root_directory>, <old_GID> and <new_GID>
+# 10) Example                : modify_aix_gid /etc 14 1014
+# 10) Return                 : 0=success or !0=failed 
+# 10) History                :
+#  2010/10/05 (S. Ballaud) Initial version.
+function modify_aix_gid
+{
+        # Declaration des variables
+        dir=${1}
+        old_gid=${2}
+        new_gid=${3}
+
+        # Exploration du repertoire de base
+        for file in $(find ${dir} -exec ls -d {} \; 2>/dev/null)
+        do
+                # Est ce que l'element est un fichier ?
+                if [[ -f ${file} ]]
+                then
+                        # Oui et est ce que le proprietaire du fichier a pour GID old_gid
+                        if [[ $(ls -ln ${file} | awk '{print $4}') -eq ${old_gid} ]]
+                        then
+                                # Oui donc on change de GID
+                                chgrp ${new_gid} ${file}
+
+				# Affectation de la valeur retour
+				result=${?}	
+				
+                                # La commande a t-elle fonctionne ?
+                                if [[ ${result} -ne 0 ]]
+                                then
+                                        # Non donc on quitte la fonction
+                                        return ${result}
+                                fi
+                        fi
+                fi
+ 
+		# Est ce que l'element est un repertoire ?
+                if [[ -d ${file} ]]
+                then
+                        # Oui et est ce le proprietaire du repertoire a pour GID old_gid
+                        if [[ $(ls -ldn ${file} | awk '{print $4}') -eq ${old_gid} ]]
+                        then
+                                # Oui donc on change de GID
+                                chgrp ${new_gid} ${file}
+				
+				# Affectation de la valeur retour
+				result=${?}
+
+                                # La commande a t-elle fonctionne ?
+                                if [[ ${?} -ne 0 ]]
+                                then
+                                        # Non donc on quitte la fonction
+                                        return ${result}
+                                fi
+                        fi
+                fi
+        done
+
+        # Fin de la fonction
+        return 0
+}
+
+# 11) Function               : create_aix_user
+# 11) Purpose                : Create user according to the type of account.
+# 11) Notes                  : You must be root. After execution of the function, you must execute the command passwd to attribute a password to the user. You must load aixcom.lib
+# 11) Version                : 1.0
+# 11) Syntax                 : create_aix_user <user> <group> <type_of_account>
+# 11) Optionals Parameters   : Nothing
+# 11) Mandatories Parameters : <user>, <group> and <type_of_account : dev (developer), admin (administrator), busapp (business appli) and prod (product)>
+# 11) Example 1              : create_aix_user toto titi admin
+# 11) Example 2              : create_aix_user oracle dba prod
+# 11) Example 3              : create_aix_user eai eai busapp
+# 11) Return                 : 0=success, 1=failed
+# 11) History                :
+#  2010/10/05 (S. Ballaud) Initial version.
+function create_aix_user
+{
+        # Declarations des variables
+        user=${1}
+        group=${2}
+        type=${3}
+
+        # Est que le type est dev ?
+        if [[ ${type} == "dev" ]]
+        then
+                # Oui donc on cherche un UID entre 1000 et 1099 de libre
+		uid=$(get_aix_newuid 1000 1099)
+
+		# Est ce que la commande a fonctionne ?	
+		if [[ ${?} -ne 0 ]]
+		then
+			# Non donc on quitte la fonction
+			return 1
+		fi
+
+ 	        # Verification de l'existence du groupe
+		if [[ $(cat /etc/group | egrep ^${group} | awk '{print $1}') == "" ]]
+		then
+			# Non donc on prend un GID de libre
+			gid=$(get_aix_newgid 1000 1099)		
+ 			
+			# Est ce que la commande a fonctionne ?
+                	if [[ ${?} -ne 0 ]]
+                	then
+                        	# Non donc on quitte la fonction
+                       	 	return 1
+                	fi
+
+			# Non donc on le cree
+			mkgroup -A id=${gid} ${group}		
+		fi
+
+                # Creation de l'user avec les parametres adequates
+		mkuser id=${uid} pgrp=${group} home=/home/${user} shell=/usr/bin/ksh loginretries=20 pwdwarntime=5 data=-1 stack=-1 core=50 rss=-1 nofiles=-1 threads=-1 nproc=-1 cpu_hard=-1 fsize_hard=-1 data_hard=-1 stack_hard=-1 core_hard=50 rss_hard=-1 nofiles_hard=-1 threads_hard=-1 nproc_hard=-1 ${user} >/dev/null
+
+		# Fin de la fonction
+		return ${?}
+
+        fi
+       
+	# Est que le type est admin ?
+        if [[ ${type} == "admin" ]]
+        then
+                # Oui donc on cherche un UID entre 1100 et 1199 de libre
+                uid=$(get_aix_newuid 1100 1199)
+
+                # Est ce que la commande a fonctionne ?
+                if [[ ${?} -ne 0 ]]
+                then
+                        # Non donc on quitte la fonction
+                        return 1
+                fi
+
+                # Verification de l'existence du groupe
+                if [[ $(cat /etc/group | egrep ^${group} | awk '{print $1}') == "" ]]
+                then
+                        # Non donc on prend un GID de libre
+                        gid=$(get_aix_newgid 1100 1199)
+
+                        # Est ce que la commande a fonctionne ?
+                        if [[ ${?} -ne 0 ]]
+                        then
+                                # Non donc on quitte la fonction
+                                return 1
+                        fi
+
+                        # Non donc on le cree
+                        mkgroup -A id=${gid} ${group}
+                fi
+
+                # Creation de l'user avec les parametres adequates
+                mkuser id=${uid} pgrp=${group} home=/home/${user} shell=/usr/bin/ksh admin=true roles=AccountAdmin loginretries=20 pwdwarntime=5 data=-1 stack=-1 core=50 rss=-1 nofiles=-1 threads=-1 nproc=-1 cpu_hard=-1 fsize_hard=-1 data_hard=-1 stack_hard=-1 core_hard=50 rss_hard=-1 nofiles_hard=-1 threads_hard=-1 nproc_hard=-1 ${user} >/dev/null
+
+ 		# Fin de la fonction
+		return ${?}       
+
+	fi
+
+	# Est ce que le type est busapp ?
+        if [[ ${type} == "busapp" ]]
+        then
+                # Oui donc on cherche un UID entre 1200 et 1299 de libre
+                uid=$(get_aix_newuid 1200 1299)
+
+                # Est ce que la commande a fonctionne ?
+                if [[ ${?} -ne 0 ]]
+                then
+                        # Non donc on quitte la fonction
+                        return 1
+                fi
+
+                # Verification de l'existence du groupe
+                if [[ $(cat /etc/group | egrep ^${group} | awk '{print $1}') == "" ]]
+                then
+                        # Non donc on prend un GID de libre
+                        gid=$(get_aix_newgid 1200 1299)
+
+                        # Est ce que la commande a fonctionne ?
+                        if [[ ${?} -ne 0 ]]
+                        then
+                                # Non donc on quitte la fonction
+                                return 1
+                        fi
+
+                        # Non donc on le cree
+                        mkgroup -A id=${gid} ${group}
+                fi
+
+                # Creation de l'user avec les parametres adequates
+		mkuser id=${uid} pgrp=${group} home=/home/${user} shell=/usr/bin/ksh rlogin=false maxage=0 loginretries=20 data=-1 stack=-1 core=50 rss=-1 nofiles=-1 threads=-1 nproc=-1 cpu_hard=-1 fsize_hard=-1 data_hard=-1 stack_hard=-1 core_hard=50 rss_hard=-1 nofiles_hard=-1 threads_hard=-1 nproc_hard=-1 ${user} >/dev/null
+
+		# Fin de la fonction 
+		return ${?}
+        fi
+	
+	# Est ce que le type est prod ?
+        if [[ ${type} == "prod" ]]
+        then
+                # Oui donc on cherche un UID entre 1300 et 1399 de libre
+                uid=$(get_aix_newuid 1300 1399)
+
+                # Est ce que la commande a fonctionne ?
+                if [[ ${?} -ne 0 ]]
+                then
+                        # Non donc on quitte la fonction
+                        return 1
+                fi
+
+                # Verification de l'existence du groupe
+                if [[ $(cat /etc/group | egrep ^${group} | awk '{print $1}') == "" ]]
+                then
+                        # Non donc on prend un GID de libre
+                        gid=$(get_aix_newgid 1300 1399)
+
+                        # Est ce que la commande a fonctionne ?
+                        if [[ ${?} -ne 0 ]]
+                        then
+                                # Non donc on quitte la fonction
+                                return 1
+                        fi
+
+                        # Non donc on le cree
+                        mkgroup -A id=${gid} ${group}
+                fi
+
+                # Creation de l'user avec les parametres adequates
+		mkuser id=${uid} pgrp=${group} home=/home/${user} shell=/usr/bin/ksh rlogin=false maxage=0 loginretries=20 data=-1 stack=-1 core=50 rss=-1 nofiles=-1 threads=-1 nproc=-1 cpu_hard=-1 fsize_hard=-1 data_hard=-1 stack_hard=-1 core_hard=50 rss_hard=-1 nofiles_hard=-1 threads_hard=-1 nproc_hard=-1 ${user} >/dev/null
+	
+		# Fin de la fonction
+		return ${?}
+
+        fi
+
+	# Si aucun des types n'est selectionne, on quitte la fonction avec une erreur
+	return 1
+}
+
+# 12) Function               : gen_aix_rsakeys
+# 12) Purpose                : Generate RSA keys without passphrase.
+# 12) Notes                  : You must install the package OpenSSH. 
+# 12) Version                : 1.1
+# 12) Syntax                 : gen_aix_rsakeys [keys_name] 
+# 12) Optionals Parameters   : [keys_name]
+# 12) Mandatories Parameters : Nothing 
+# 12) Example                : gen_aix_rsakeys rsa_keys 
+# 12) Return                 : 0=success or !0=failed (check man ssh-keygen for more precisions about errors)
+# 12) History                :
+#  2010/10/08 (S. Ballaud) Initial version.
+#  2010/10/13 (S. Ballaud) With no passphrase.
+function gen_aix_rsakeys
+{
+	# Y'a t-il un argument ? 
+	if [[ ${1} == "" ]]
+	then
+		# Non donc on donne un nom aux clefs 
+		key_name=id_rsa
+	else
+		# Oui donc on affecte la valeur à la variable
+		key_name=${1}
+	fi
+
+	# Est ce que les cles existent deja ?
+	if [[ -e ~/.ssh/${key_name} ]]
+	then
+		# Oui
+		return 1
+	fi
+
+	# Creation de cles RSA pour SSHv2 de 2048 bits sans passphrase
+	ssh-keygen -q -t rsa -b 2048 -f ~/.ssh/${key_name} -N "" >/dev/null
+
+	# Fin de la fonction
+	return ${?}
+}
+
+# 13) Function               : put_aix_rsakey
+# 13) Purpose                : Transfer the RSA public key to a remote user.
+# 13) Notes                  : You must install the package OpenSSH. Interactive function.  
+# 13) Version                : 1.0
+# 13) Syntax                 : put_aix_rsakey <server> <user> <path_rsa_public_key>
+# 13) Optionals Parameters   : Nothing
+# 13) Mandatories Parameters : <server : hostname or IP address>, <user> and <path_rsa_public_key> 
+# 13) Example 1              : put_aix_rsakey 192.168.3.2 oracle ~/.ssh/rsa_key.pub 
+# 13) Example 2              : put_aix_rsakey bdd.toto.com paul ~/.ssh/rsa_key.pub   
+# 13) Return                 : 0=success or !0=failed (check man ssh and scp for more precisions about errors)
+# 13) History                :
+#  2010/10/13 (S. Ballaud) Initial version.
+function put_aix_rsakey
+{
+	# Declarations de variables
+	server=${1}
+	user=${2}
+	path_key=${3}	
+	key=$(basename ${path_key})
+
+	# Copie de la cle sur la machine distante
+	scp ${path_key} ${user}@${server}:/tmp/${key} 
+
+	# Affectation de la valeur retour
+	result=${?}
+
+	# La commande a t-elle fonctionne ?
+        if [[ ${result} -ne 0 ]]
+        then
+                # Non donc on quitte la fonction
+                return ${result}
+        fi
+
+	# Connexion sur la machine distante et depot de la cle dans le fichier authorized_keys
+	ssh ${user}@${server} "cat /tmp/${key} >> ~/.ssh/authorized_keys; rm /tmp/${key}"
+	
+	# Fin de la fonction
+	return ${?}
+
+}
+
+# 14) Function               : put_aix_api
+# 14) Purpose                : Transfer the API X2P in a remote server.
+# 14) Notes                  : You must install the package OpenSSH. Configure the path of the api in the file conf/api.conf.  
+# 14) Version                : 1.0
+# 14) Syntax                 : put_aix_api <server> <user> <path_api> [path_private_key] 
+# 14) Optionals Parameters   : [path_private_key : not the default private key] 
+# 14) Mandatories Parameters : <server : hostname or IP address>, <user> and <path_api>  
+# 14) Example 1              : put_aix_api 192.168.3.2 oracle ~/packapi-4.0.0.tar ~/.ssh/rsa_key 
+# 14) Example 2              : put_aix_api bdd.toto.com paul ~/packapi-4.0.0.tar
+# 14) Return                 : 0=success or !0=failed 
+# 14) History                :
+#  2010/10/08 (S. Ballaud) Initial version.
+function put_aix_api
+{
+	# Declaration des variables
+	server=${1}
+	user=${2}
+	path_api=${3}
+
+	# Y'a t-il un 4ieme argument ?	
+	if [[ ${4} == "" ]]
+	then
+		# Non donc on donne la cle privee par defaut
+		path_private_key=~/.ssh/id_rsa
+	else	
+		# Oui
+		path_private_key=${4}
+	fi
+	
+	# Creation d'un batchfile pour le transfert de fichier
+	touch ${APIHOME}/tmp/batchfile
+
+	# Creation du contenu du batchfile
+	# Deplacement dans le home de l'utilisateur
+	echo "cd /tmp" >> ${APIHOME}/tmp/batchfile
+
+	# On depose l'archive de l'API 
+	echo "put ${path_api}" >> ${APIHOME}/tmp/batchfile
+	
+	# Fin du transfert
+	echo "quit" >> ${APIHOME}/tmp/batchfile
+	
+	# Transfert SFTP via le batchfile 
+	sftp -b ${APIHOME}/tmp/batchfile -oIdentityFile=${path_private_key} ${user}@${server} >/dev/null
+
+	# Affectation de la valeur retour
+	result=${?}
+
+	# Suppression du batchfile
+	rm ${APIHOME}/tmp/batchfile
+	
+	# Fin de la fonction
+	return ${result}
+}
+

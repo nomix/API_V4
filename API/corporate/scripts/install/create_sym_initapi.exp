@@ -1,0 +1,22 @@
+#!/usr/bin/expect
+
+# Declaration de variables
+set host [lindex $argv 0]
+set password [lindex $argv 1]
+set timeout 5 
+
+# Envoi de la commande
+spawn ssh root@${host} "ln -sf /home/api/APIX2P/bin/initapi /usr/bin/initapi" 
+
+# Message affiche par le systeme demandant un mot de passe pour root
+expect "*password:"
+
+# Envoi de la reponse
+send "${password}\r"
+
+# Permet de prendre la main sur le shell afin d'effectuer le lien symbolique
+interact
+
+# Fin du script
+exit 0
+

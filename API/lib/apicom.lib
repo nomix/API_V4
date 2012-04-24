@@ -1,0 +1,765 @@
+#!/bin/ksh
+# Copyright 2010 XPRESS2PEOPLE
+# File                   : apicom.lib
+# Created on             : 2009/07/16   
+# Family                 : API
+# Purpose                : This file contains essentials functions for the communication with users.
+# Developpers            :
+#   Simon Ouellet can be reached at <simon.ouellet@x2p.fr>
+#   Benoit Garcia can be reached at <benoit.garcia@x2p.fr>
+#   Sylvain Ballaud can be reached at <sylvain.ballaud@x2p.fr>
+# History                :
+#  2009/07/16 (B. Garcia) Initial version from comlib.fnc by Simon Ouellet.
+#  2009/08/19 (B. Garcia) Remove initlogs from p2l start. Be sur to call initlogs before using p2l.
+#  2010/03/12 (S. Ballaud) Initial version from comlib.fnc by Simon Ouellet.
+#  2010/08/24 (S. Ouellet) hapi integration
+#  2010/08/25 (B. Garcia) Various header fixes and convert to UTF-8
+#  2010/09/03 (S. Ballaud) Modifications about the name of functions.
+
+## Variable declaration ##
+# On exporte la variable affichant la version de l'API
+#export VERSION_API="4.0"
+
+# Variable      : AP2_LOGDATEFORMAT
+# Purpose       : String used to format the date in log files. Allow to
+#   supersede the locale time configuration.
+# Notes         : Nothing.
+if [[ -z $AP2_LOGDATEFORMAT ]]; then
+  export AP2_LOGDATEFORMAT='+%F %T'
+fi
+# Variable      : AP2_STRINGDATEFORMAT
+# Purpose       : String used to format the date in file names. Allow to avoid
+#   the use of unwanted charaters.
+# Notes         : Nothing.
+if [[ -z $AP2_STRINGDATEFORMAT ]]; then
+  export AP2_STRINGDATEFORMAT='+%Y%m%d-%H%M%S'
+fi
+
+# Variable      : AP2_LOGPATH
+# Purpose       : Path to the folder where log files should be stored.
+# Notes         : This variable should be defined in the main script.
+if [[ -z $AP2_LOGPATH ]]; then
+  export AP2_LOGPATH="${APIHOME}/logs"
+fi
+# remove the trailling / to the path if needed.
+if [[ ${AP2_LOGPATH#${AP2_LOGPATH%?}} = "/" ]]; then
+  export AP2_LOGPATH=${AP2_LOGPATH%?}
+fi
+# Variable      : AP2_LOGFILE
+# Purpose       : Name of the standart log file. It will contains stepstones of
+#   the script execution.
+# Notes         : This variable should be defined in the main script. The
+#   variable should contains only the file name and should not start with a /.
+#   For specifing the path to file use $AP2_LOGPATH.
+if [[ -z $AP2_LOGFILE ]]; then
+  export AP2_LOGFILE="result.log"
+fi
+# Variable      : AP2_VLOGFILE
+# Purpose       : Name of the verbose log file. It will contains the details of
+#   the script execution.
+# Notes         : This variable should be defined in the main script. The
+#   variable should contains only the file name and should not start with a /.
+#   For specifing the path to file use $AP2_LOGPATH.
+if [[ -z $AP2_VLOGFILE ]]; then
+  export AP2_VLOGFILE="verbose_result.log"
+fi
+
+## Function declaration ##
+
+# 1) Function               : init_api_logs
+# 1) Purpose                : Initialize the logfiles & rotate old log files if needed. If rotation fails, output for the current execution will be append to the file.
+# 1) Notes                  : $AP2_LOGFILE is expected to be set. $AP2_VLOGFILE is expected to be set.
+# 1) Version                : 1.2
+# 1) Syntax                 : init_api_logs
+# 1) Optionals Parameters   : Nothing
+# 1) Mandatories Parameters : Nothing
+# 1) Example                : init_api_logs 
+# 1) Return                 : -1 in case of error. 0 otherwise.
+# 1) History                :
+#   2009/07/16 (B. Garcia) Initial version from comlib.fnc by S. Ouellet.
+#   2011/02/25 (S. Ballaud) Modification about the name of the logfile et vlogfile
+init_api_logs() {
+# Check the existence of the log storage folder. Try to create it if needed.
+  if [[ ! -d $AP2_LOGPATH ]]; then
+    mkdir -p $AP2_LOGPATH
+    if [[ $? -ne 0 ]]; then
+      echo "Log storage folder ${AP2_LOGPATH} doesn't exist and can't be created."
+      echo "Logs will be stored in ${HOME}."
+      export AP2_LOGPATH=$APIHOME
+    fi
+  fi
+
+# Standart Log:
+#   Check the existence of a previous file and try to rename it.
+  if [[ -f $AP2_LOGPATH/$AP2_LOGFILE ]]; then
+    export LASTRUN=`head -n 1 ${AP2_LOGPATH}/${AP2_LOGFILE}`
+    mv -f ${AP2_LOGPATH}/${AP2_LOGFILE} ${AP2_LOGPATH}/${LASTRUN}_${AP2_LOGFILE}
+    if [[ $? -ne 0 ]]; then
+      echo "Unable to rotate ${AP2_LOGFILE}."
+      echo "Current logs will be append to the end of ${AP2_LOGFILE}."
+    fi
+    unset LASTRUN
+  fi
+  # Add the complete path to the log file for further use.
+  export AP2_LOGFILE=${AP2_LOGPATH}/${AP2_LOGFILE}
+#   Create the new file.
+  touch ${AP2_LOGFILE}
+#touch ${AP2_LOGPATH}/${AP2_LOGFILE}
+  if [[ $? -ne 0 ]]; then
+    echo "Unable to create ${AP2_LOGFILE}."
+    echo "Logs will be displayed on STDOUT and won't be stored."
+  else
+    echo `date "${AP2_STRINGDATEFORMAT}"` >>${AP2_LOGFILE}
+  fi
+
+# Verbose Log:
+#   Check the existence of a previous file and try to rename it.
+  if [[ -f $AP2_LOGPATH/$AP2_VLOGFILE ]]; then
+    export LASTRUN=`head -n 1 ${AP2_LOGPATH}/${AP2_VLOGFILE}`
+    mv -f ${AP2_LOGPATH}/${AP2_VLOGFILE} ${AP2_LOGPATH}/${LASTRUN}_${AP2_VLOGFILE}
+    if [[ $? -ne 0 ]]; then
+      echo "Unable to rotate ${AP2_VLOGFILE}."
+      echo "Current logs will be append to the end of ${AP2_VLOGFILE}."
+    fi
+    unset LASTRUN
+  fi
+  # Add the complete path to the log file for further use.
+  export AP2_VLOGFILE=${AP2_LOGPATH}/${AP2_VLOGFILE}
+#   Create the new file.
+  touch ${AP2_VLOGFILE}
+#touch ${AP2_LOGPATH}/${AP2_VLOGFILE}
+  if [[ $? -ne 0 ]]; then
+    echo "Unable to create ${AP2_VLOGFILE}."
+    echo "Logs will be displayed on STDOUT and won't be stored."
+  else
+    echo `date "${AP2_STRINGDATEFORMAT}"` >>${AP2_VLOGFILE}
+  fi
+}
+# init_api_logs end
+
+# 2) Function               : print_api_stdoutd
+# 2) Purpose                : Print a message to stdout. The message is prefixed with the current date & time. 
+# 2) Notes                  : Nothing.
+# 2) Version                : 1.0
+# 2) Syntax                 : print_api_stdoutd <string>
+# 2) Optionals Parameters   : Nothing
+# 2) Mandatories Parameters : <string>
+# 2) Example                : print_api_stdoutd "Hello World"
+# 2) Return                 : Nothing expected.
+# 2) History                :
+#   2009/07/16 (B. Garcia) Initial version from comlib.fnc by S. Ouellet.
+#   2010/09/08 (S. Ballaud) Modification from comlib.fnc by S. Ouellet.
+print_api_stdoutd() {
+ echo "############################################################"
+ echo `date "+%F %T"`
+ echo $@
+ echo "############################################################"
+}
+# print_api_stdoutd end
+
+# 3) Function               : print_api_logfile
+# 3) Purpose                : Print a message to the standart AP2_LOGFILE. The message is prefixed with the current date & time
+# 3) Notes                  : $AP2_LOGFILE is expected to be set.
+# 3) Version                : 1.1
+# 3) Syntax                 : print_api_logfile <level> [string] [end code]  
+# 3) Optionals Parameters   : [string : only with log] and [end code : used with err or end to specify an error level]
+# 3) Mandatories Parameters : <level : start|log|war|err|end> 
+# 3) Example 1              : print_api_logfile start
+# 3) Example 2              : print_api_logfile err "File flushed" 1  
+# 3) Return                 : -1 in case of syntax error. 0 otherwise.
+# 3) History                :
+#   2009/07/16 (B. Garcia) Initial version from comlib.fnc by S. Ouellet.
+#   2009/08/19 (B. Garcia) Remove initlogs from p2l start. Be sur to call initlogs before using p2l.
+print_api_logfile() {
+  case $1 in
+    "start")
+      echo `date "+%F %T"` "Program started" >>${AP2_LOGFILE}
+      ;;
+    "log")
+      echo `date "+%F %T"` "Step ${2} : OK" >>${AP2_LOGFILE}
+      ;;
+    "war")
+      echo `date "+%F %T"` "Step ${2} : Warning" >>${AP2_LOGFILE}
+      ;;
+    "err")
+      echo `date "+%F %T"` "Step ${2} : Error : ${3}" >>${AP2_LOGFILE}
+      ;;
+    "end")
+      if [[ ${3} -eq 0 ]]; then
+        echo `date "+%F %T"` "Program ended successfully" >>${AP2_LOGFILE}
+      else
+        echo `date "+%F %T"` "Program ended with error(s). Error code is ${3}" >>${AP2_LOGFILE}
+      fi
+      return ${3}
+      ;;
+    *)
+      echo "Bad use of print_api_logfile."
+      return -1
+      ;;
+  esac
+}
+# print_api_logfile end
+
+# 4) Function               : print_api_dbg
+# 4) Purpose                : Print a message to stdout if the variable $DEBUG is set.
+# 4) Notes                  : nothing
+# 4) Version                : 1.0
+# 4) Syntax                 : print_api_dbg <string>
+# 4) Optionals Parameters   : Nothing
+# 4) Mandatories Parameters : <string> 
+# 4) Example                : print_api_dbg "Debug is set"
+# 4) Return                 : Nothing expected.
+# 4) History                :
+#   2009/07/16 (B. Garcia) Initial version.
+#   2010/09/08 (S. Ballaud) Modification about the test.
+print_api_dbg() {
+  if [[ $AP2_DEBUG -eq 1 ]]; then
+    echo $@
+  fi
+}
+# print_api_dbg end
+
+# 5) Function               : set_api_dbg
+# 5) Purpose                : Set or unset debug mode.
+# 5) Notes                  : nothing
+# 5) Version                : 1.0
+# 5) Syntax                 : set_api_dbg <0 or 1> 
+# 5) Optionals Parameters   : Nothing
+# 5) Mandatories Parameters : <0 or 1> 
+# 5) Example                : set_api_dbg 1
+# 5) Return                 : 0=no debug, 1=debug or 2=error syntax
+# 5) History                :
+#   2010/09/08 (S. Ballaud) Initial version.
+function set_api_dbg
+{
+	# Y'a t-il uniquement un argument ?
+	if [[ ${#} -ne 1 ]]
+	then
+		# Non donc on retourne une erreur
+		return 2
+	fi
+
+	# Declaration de variables
+	mode=${1}
+
+	# Quel est le mode ?
+	if [[ ${mode} -eq 1 ]]
+	then
+		# Mode DEBUG
+		AP2_DEBUG=1
+		return 1
+	elif [[ ${mode} -eq 0 ]]
+	then
+		# Mode Normal
+		AP2_DEBUG=0
+		return 0
+	else
+		# Erreur de syntaxe
+		return 2
+	fi
+}
+
+# 6) Function               : check_api_result
+# 6) Purpose                : Check a return code and log it.
+# 6) Notes                  : Nothing.
+# 6) Version                : 1.0
+# 6) Syntax                 : check_api_result <rc> <steplevel>
+# 6) Optionals Parameters   : Nothing
+# 6) Mandatories Parameters : <rc : Value to check (0=success, otherwise warning)> and <steplevel : Step of the main program (Will appears in the profile)> 
+# 6) Example                : check_api_result 0 1 
+# 6) Return                 : -1 in case of syntax error. 0 otherwise.
+# 6) History                :
+#   2009/07/16 (B. Garcia) Initial version from comlib.fnc by S. Ouellet.
+#   2011/11/23 (S. Ouellet) bug fixed (exit $1 instead exit $2)
+check_api_result() {
+  if [[ ${1} -eq 0 ]]; then
+    print_api_logfile log "${2}"
+  else
+    print_api_logfile err "${2}" "${1}"
+    if [[ $SCRIPTYPE != "check" ]]; then
+      exit "${1}" #exit the program with the given RC
+    fi
+  fi
+}
+# check_api_result end
+
+# 7) Function               : hapi 
+# 7) Purpose                : Display help for all the libraries and functions of the API.
+# 7) Notes                  : Configure the path of the api in the file conf/api.conf. 
+# 7) Version                : 2.1
+# 7) Syntax                 : hapi <-l | -h | name_library | name_library name_function> 
+# 7) Optionals Parameters   : Nothing
+# 7) Mandatories Parameters : <-l : list the libraries | -h : display help | name_library | name_library name_function> 
+# 7) Example 1              : hapi -l
+# 7) Example 2              : hapi apicom init_api_logs
+# 7) Return                 : Informations about a library or a function. 
+# 7) History                :
+#   2010/03/21 (S.Ballaud) Initial version.
+
+# Affiche un menu d'aide
+function help
+{
+	echo "##############"
+	echo "# PARAMETERS #"
+	echo "##############"
+	echo "usage : hapi -h (Display help menu)"
+	echo "        hapi -l (List Libraries)"
+	echo "        hapi library_name (Display informations about a library and its functions)"
+	echo "        hapi library_name function_name (Display informations about a function)"
+}
+
+# Affiche les librairies disponibles
+function display_lib
+{
+	# S'il existe des librairies
+	#if [[ $(ls ~/API-${VERSION_API}}/lib/*.lib 2>/dev/null) != "" ]]
+	if [[ $(ls ${APIHOME}/lib/*.lib 2>/dev/null) != "" ]]
+	then
+		# Alors on affiche une banniere
+		echo "########################"
+		echo "# AVAILABLES LIBRARIES #"
+		echo "########################"
+		
+		# On affiche les librairies sans le chemin ~/API-${VERSION_API}/lib/ en colonne
+		#ls -1 ~/API-${VERSION_API}/lib/*.lib | cut -f 6 -d /
+		ls -1 ${APIHOME}/lib/ | grep .lib | awk -F"." '{ print $1 }'
+	else
+		# Sinon on affiche un message d'erreur
+		echo "#########"
+		echo "# ERROR #"
+		echo "#########"
+		echo "There are no libraries here !!!"
+	fi
+}
+
+# Affiche une librairie choisie avec une courte description d'elle meme et ces fonctions
+function display_lib_func
+{
+	# Affectation du nom de la librairie dans la variable lib
+	lib=${APIHOME}/lib/${1}
+
+	# Si le nom de la librairie n'a pas d'extension .lib
+	if [[ ${lib} != *.lib ]]
+	then
+		# Alors on la met
+		lib=${lib}".lib"
+	fi
+
+	# Si cette librairie existe 
+	if [[ $(cat ${lib} 2>/dev/null ) != "" ]]   
+	then
+		# Affichage d'une banniere pour la librairie
+		echo "###########"
+		echo "# LIBRARY #"
+		echo "###########"
+	
+		# Affichage du nom du fichier 
+		name=$(cat ${lib} | head -8 | grep File | sed 's/^..//g')
+		echo "${name}"
+	
+		# Affichage de sa fonction
+		purpose=$(cat ${lib} | head -8 | grep Purpose | sed 's/^..//g')
+		echo "${purpose}"
+	
+		# Affichage de sa famille 
+		family=$(cat ${lib} | head -8 | grep Family | sed 's/^..//g')
+		echo "${family}"
+		
+		# Affichage d'une banniere pour les fonctions
+		echo "#############"
+		echo "# FUNCTIONS #"
+		echo "#############"
+		echo "------------------------"
+
+		# Initialisation du nombre de fonction
+		nb_fonction=1
+		
+		# Tant que l'on a des fonctions dans le fichier
+		while [[ $(cat ${lib} | grep "${nb_fonction}) Function") != "" ]]
+		do
+			# On affiche le nom de la fonction 
+			name_funct=$(cat ${lib} | grep -w "${nb_fonction}) Function" | sed 's/^.....//g' | awk '{printf $3}')
+			echo "Name                   : ${name_funct}"    
+	
+			# On affiche le but de la fonction	
+			if [[ $(cat ${lib} | grep -w "${nb_fonction}) Purpose" | sed 's/^.....//g' | cut -c1) != " " ]]
+			then
+				purpose_funct=$(cat ${lib} | grep -w "${nb_fonction}) Purpose" | sed 's/^.....//g')
+				echo "${purpose_funct}"
+			else
+				purpose_funct=$(cat ${lib} | grep -w "${nb_fonction}) Purpose" | sed 's/^......//g')
+				echo "${purpose_funct}"
+			fi
+
+			# On affiche la syntaxe de la fonction
+			if [[ $(cat ${lib} | grep -w "${nb_fonction}) Syntax" | sed 's/^.....//g' | cut -c1) != " " ]]
+			then
+				syntax_funct=$(cat ${lib} | grep -w "${nb_fonction}) Syntax" | sed 's/^.....//g')
+				echo "${syntax_funct}"
+			else
+				syntax_funct=$(cat ${lib} | grep -w "${nb_fonction}) Syntax" | sed 's/^......//g')
+				echo "${syntax_funct}"
+			fi
+
+			# On affiche un separateur entre les fonctions
+			echo "------------------------"		
+		 
+			# On incremente le nombre de fonction pour tester s'il y en a une suivante
+			(( nb_fonction = nb_fonction + 1 ))
+		done
+	else
+		# Sinon on affiche une erreur et on quitte la fonction
+		echo "#########"
+		echo "# ERROR #"
+		echo "#########"
+		echo "This library does not exist !!!"
+		echo "Key again this command to find an existing library : hapi -l"
+	fi
+}
+
+# Affiche une fonction avec ses caracteristiques
+function display_func
+{
+	# Affectation du nom de la librairie dans la variable lib
+	lib=${APIHOME}/lib/$1
+
+	# Si le nom de la librairie n'a pas d'extension .lib
+	if [[ ${lib} != *.lib ]]
+	then
+		# Alors on la met
+		lib=${lib}".lib"
+	fi
+
+	# Retrouver le numero de la fonction
+	num_funct=$(cat ${lib} | grep -w "Function               : ${2}" | head -1 | awk '{printf $2}' | tr -d ')')
+
+	# Si une fonction existe  
+	if [[ ${num_funct} != "" ]]
+	then 
+		# Alors on affiche une banniere pour la fonction
+		echo "############"
+		echo "# FUNCTION #"
+		echo "############"
+		
+		# Affichage du nom de la fonction	
+		name_funct=$(cat ${lib} | grep -w "${num_funct}) Function" | sed 's/^.....//g' | awk '{printf $3}')
+		echo "Name                   : ${name_funct}"	
+	
+		# Affichage du but de la fonction  
+		if [[ $(cat ${lib} | grep -w "${num_funct}) Purpose" | sed 's/^.....//g' | cut -c1) != " " ]]
+		then
+			purpose_funct=$(cat ${lib} | grep -w "${num_funct}) Purpose" | sed 's/^.....//g')
+			echo "${purpose_funct}"
+		else
+			purpose_funct=$(cat ${lib} | grep -w "${num_funct}) Purpose" | sed 's/^......//g')
+			echo "${purpose_funct}"
+		fi
+		
+		# Affichage de notes  
+		if [[ $(cat ${lib} | grep -w "${num_funct}) Notes" | sed 's/^.....//g' | cut -c1) != " " ]]
+		then
+			notes_funct=$(cat ${lib} | grep -w "${num_funct}) Notes" | sed 's/^.....//g')
+			echo "${notes_funct}"
+		else
+			notes_funct=$(cat ${lib} | grep -w "${num_funct}) Notes" | sed 's/^......//g')
+			echo "${notes_funct}"
+		fi
+
+		# Affichage de sa syntaxe   
+		if [[ $(cat ${lib} | grep -w "${num_funct}) Syntax" | sed 's/^.....//g' | cut -c1) != " " ]]
+		then
+			syntax_funct=$(cat ${lib} | grep -w "${num_funct}) Syntax" | sed 's/^.....//g')
+			echo "${syntax_funct}"
+		else
+			syntax_funct=$(cat ${lib} | grep -w "${num_funct}) Syntax" | sed 's/^......//g')
+			echo "${syntax_funct}"
+		fi
+	
+		# Affichage de ses parametres optionnelles   
+		if [[ $(cat ${lib} | grep -w "${num_funct}) Optionals Parameters" | sed 's/^.....//g' | cut -c1) != " " ]]
+		then
+			opt_para_funct=$(cat ${lib} | grep -w "${num_funct}) Optionals Parameters" | sed 's/^.....//g')
+			echo "${opt_para_funct}"
+		else
+			opt_para_funct=$(cat ${lib} | grep -w "${num_funct}) Optionals Parameters" | sed 's/^......//g')
+			echo "${opt_para_funct}"
+		fi
+
+		# Affichage de ses parametres obligatoires   
+		if [[ $(cat ${lib} | grep -w "${num_funct}) Mandatories Parameters" | sed 's/^.....//g' | cut -c1) != " " ]]
+		then
+			man_para_funct=$(cat ${lib} | grep -w "${num_funct}) Mandatories Parameters" | sed 's/^.....//g')
+			echo "${man_para_funct}"
+		else
+			man_para_funct=$(cat ${lib} | grep -w "${num_funct}) Mandatories Parameters" | sed 's/^......//g')
+			echo "${man_para_funct}"
+		fi
+
+		# Affichage des exemples    
+		if [[ $(cat ${lib} | grep -w "${num_funct}) Example" | sed 's/^.....//g' | cut -c1) != " " ]]
+		then
+			ex_funct=$(cat ${lib} | grep -w "${num_funct}) Example" | sed 's/^.....//g')
+			echo "${ex_funct}"
+		else
+			ex_funct=$(cat ${lib} | grep -w "${num_funct}) Example" | sed 's/^......//g')
+			echo "${ex_funct}"
+		fi
+		
+		# Affichage de sa valeur retour   
+		if [[ $(cat ${lib} | grep -w "${num_funct}) Return" | sed 's/^.....//g' | cut -c1) != " " ]]
+		then
+			return_funct=$(cat ${lib} | grep -w "${num_funct}) Return" | sed 's/^.....//g')
+			echo "${return_funct}"
+		else
+			return_funct=$(cat ${lib} | grep -w "${num_funct}) Return" | sed 's/^......//g')
+			echo "${return_funct}"
+		fi
+ 	else	
+		# Sinon on affiche une erreur et on quitte la fonction
+		echo "#########"
+		echo "# ERROR #"
+		echo "#########"
+		echo "This function does not exist !!!"
+		echo "Key again this command to find an existing function : hapi librairy_name"
+	fi
+}
+
+# Affiche des caracteristiques sur les librairies et leurs fonctions
+function hapi
+{
+	# On efface l'ecran
+	clear
+
+	# On affiche une banniere
+	echo "############################"
+	echo "# API HELP VERSION $APIVERSION #"
+	echo "############################"
+
+	# Si on a aucun argument
+	if [[ ${#} == 0 ]]
+	then
+		# Alors on affiche l'aide
+		help
+	else
+		# Sinon si on a un argument
+		if [[ ${#} == 1 ]]
+		then
+			# On verifie si le parametre est une option
+			while getopts "lh" opt 2>/dev/null;
+			do
+				# On distingue les options
+				case ${opt} in
+					h)
+						# Si c'est -h, on affiche l'aide et on quitte la fonction hapi
+						help 
+						return 0;;
+					l)	
+						# Si c'est -l, on affiche la liste des librairies et on quitte la fonction hapi
+						display_lib	
+						return 1;;
+					*)
+						# Si c'est une autre option, on affiche l'aide et on quitte la fonction hapi
+						help 
+						return 2;;
+				esac
+			done
+			
+			# Sinon on affiche les caracteristiques de la librairie potentielle	
+			display_lib_func ${1}  	
+		fi	
+	fi
+	
+	# Si on a deux arguments
+	if [[ ${#} == 2 ]]
+	then
+		# Alors on affiche les details de la fonction 
+		display_func ${1} ${2}
+	fi
+
+	# Si on a plus de deux arguments, on affiche l'aide 	
+	if [[ ${#} > 2 ]] 
+	then
+		# Alors on affiche l'aide
+		help
+	fi
+}
+
+# 8) Function               : get_api_chksum
+# 8) Purpose                : Get the checksum of all files located in bin, lib, scripts and corporate/scripts and put them in the file conf/refsumtab  
+# 8) Notes                  : The file conf/refsumtab is created or/and overwrite each time that this function is called. 
+# 8) Version                : 1.0
+# 8) Syntax                 : get_api_chksum
+# 8) Optionals Parameters   : Nothing
+# 8) Mandatories Parameters : Nothing
+# 8) Example                : get_api_chksum
+# 8) Return                 : 0=success or !0=failed
+# 8) History                :
+#  2010/10/27 (S. Ballaud) Initial version.
+function get_api_chksum
+{
+	# Est ce qu'un fichier refsumtab ?
+	if [[ -f ${APIHOME}/conf/refsumtab ]]
+	then
+		# Oui donc on le supprime 
+		rm ${APIHOME}/conf/refsumtab
+	fi	
+
+	# Chksum pour le repertoire bin
+	for fic in $(ls ${APIHOME}/bin)
+	do
+		# Realise le checksum
+		result=$(cksum ${APIHOME}/bin/${fic})
+		
+		# Prelevement le hash et le nom du fichier
+		hash=$(echo ${result} | awk '{print $1}')
+		filename=$(echo ${result} | awk '{print $3}')	 
+
+		# Suppression du chemin de l'API
+		filename=$(echo ${filename#*${APIHOME}/})	
+		
+		# Redirection des infos dans le fichier	
+		echo "${hash}:${filename}" >> ${APIHOME}/conf/refsumtab
+	done	
+	
+	# Chksum pour le repertoire lib 
+	for fic in $(ls ${APIHOME}/lib)
+	do
+ 		# Realise le checksum
+                result=$(cksum ${APIHOME}/lib/${fic})
+
+                # Prelevement le hash et le nom du fichier
+                hash=$(echo ${result} | awk '{print $1}')
+                filename=$(echo ${result} | awk '{print $3}')
+
+                # Suppression du chemin de l'API
+                filename=$(echo ${filename#*${APIHOME}/})
+
+                # Redirection des infos dans le fichier
+                echo "${hash}:${filename}" >> ${APIHOME}/conf/refsumtab
+	done	
+
+	# Chksum pour le repertoire scripts 
+	for fic in $(ls ${APIHOME}/scripts)
+	do
+		# Est ce que le fichier est un repertoire ?
+		if [[ $(file ${APIHOME}/scripts/${fic} | awk '{print $2}') == "directory"  ]]
+		then
+			# Oui donc on explore le repertoire
+			for file in $(ls ${APIHOME}/scripts/${fic}) 
+			do
+				# Realise le checksum
+			       	result=$(cksum ${APIHOME}/scripts/${fic}/${file})
+
+                		# Prelevement le hash et le nom du fichier
+               			hash=$(echo ${result} | awk '{print $1}')
+		                filename=$(echo ${result} | awk '{print $3}')
+
+                		# Suppression du chemin de l'API
+		                filename=$(echo ${filename#*${APIHOME}/})
+
+                		# Redirection des infos dans le fichier
+                		echo "${hash}:${filename}" >> ${APIHOME}/conf/refsumtab
+			done
+                else
+			# Non donc realise le checksum
+                        result=$(cksum ${APIHOME}/scripts/${fic})
+
+                        # Prelevement le hash et le nom du fichier
+                        hash=$(echo ${result} | awk '{print $1}')
+                        filename=$(echo ${result} | awk '{print $3}')
+
+                        # Suppression du chemin de l'API
+                        filename=$(echo ${filename#*${APIHOME}/})
+
+                        # Redirection des infos dans le fichier
+                        echo "${hash}:${filename}" >> ${APIHOME}/conf/refsumtab
+		fi
+	done	
+
+	# Chksum pour le repertoire corporate/scripts
+        for fic in $(ls ${APIHOME}/corporate/scripts)
+        do
+                # Est ce que le fichier est un repertoire ?
+                if [[ $(file ${APIHOME}/corporate/scripts/${fic} | awk '{print $2}') == "directory"  ]]
+                then
+                        # Oui donc on explore le repertoire
+                        for file in $(ls ${APIHOME}/corporate/scripts/${fic})
+                        do
+				# Realise le checksum
+                                result=$(cksum ${APIHOME}/corporate/scripts/${fic}/${file})
+
+                                # Prelevement le hash et le nom du fichier
+                                hash=$(echo ${result} | awk '{print $1}')
+                                filename=$(echo ${result} | awk '{print $3}')
+
+                                # Suppression du chemin de l'API
+                                filename=$(echo ${filename#*${APIHOME}/})
+
+                                # Redirection des infos dans le fichier
+                                echo "${hash}:${filename}" >> ${APIHOME}/conf/refsumtab
+			done
+                else
+ 			# Non donc realise le checksum
+                        result=$(cksum ${APIHOME}/corporate/scripts/${fic})
+
+                        # Prelevement le hash et le nom du fichier
+                        hash=$(echo ${result} | awk '{print $1}')
+                        filename=$(echo ${result} | awk '{print $3}')
+
+                        # Suppression du chemin de l'API
+                        filename=$(echo ${filename#*${APIHOME}/})
+
+                        # Redirection des infos dans le fichier
+                        echo "${hash}:${filename}" >> ${APIHOME}/conf/refsumtab
+		fi
+        done
+}
+
+# 9) Function               : verify_api_chksum
+# 9) Purpose                : Redo checksums of all files in bin, lib, scripts, corporate/scripts and verify the value thank to the file conf/refsumtab    
+# 9) Notes                  : Nothing 
+# 9) Version                : 1.0
+# 9) Syntax                 : verify_api_chksum
+# 9) Optionals Parameters   : Nothing
+# 9) Mandatories Parameters : Nothing
+# 9) Example                : verify_api_chksum
+# 9) Return                 : 0=success or !0=failed
+# 9) History                :
+#  2010/10/27 (S. Ballaud) Initial version.
+function verify_api_chksum
+{
+	# Declaration de variable
+	integrity=0
+
+	for line in $(cat ${APIHOME}/conf/refsumtab)
+	do
+		# Extraction du hash et du nom du fichier
+		old_hash=$(echo ${line} | awk -F ':' '{print $1}') 		
+		file=$(echo ${line} | awk -F ':' '{print $2}')
+	
+		# Ajout du chemin de l'API au fichier
+		file=$(echo ${APIHOME}/${file})
+
+		# Chksum du fichier
+		hash=$(cksum ${file} | awk '{print $1}')
+
+		# Est ce que le fichier est integre ?
+		if [[ ${hash} -ne ${old_hash} ]]
+		then
+			# Non donc on indique l'erreur 
+			echo "The file ${file} has been changed since the last checksum in the reference file" 
+			integrity=1 
+		fi 	 
+	done
+
+	# Est ce que l'integrite des fichiers a été respecte ?  
+	if [[ ${integrity} -eq 0 ]]
+	then
+		# Oui	
+		return 0
+	else
+		# Non
+		return 1
+	fi
+}
+

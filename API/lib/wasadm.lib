@@ -1,0 +1,45 @@
+# Copyright 2010 XPRESS2PEOPLE
+# File                   : wascom.lib
+# Created on             : 2010/10/21
+# Family                 : WAS
+# Purpose                : This file contains essentials functions for the WebSphere administration and management. 
+# Developpers            :
+#   Simon Ouellet can be reached at <simon@x2p.fr>
+# History                :
+#  2010/10/21 (S. OUELLET) Initial version.
+
+# 1) Function               : set_was_haservice 
+# 1) Purpose                : Enable or disable the HA Services (DSC) on all AS from a node
+# 1) Notes                  : Nothing
+# 1) Version                : 1.0
+# 1) Syntax                 : set_was_haservice <0/1> <nodename>
+# 1) Optionals Parameters   : Nothing
+# 1) Mandatories Parameters : <0=dis,1=ena>, <nodename> 
+# 1) Example 1              : set_was_haservice 1 pars001i0144Node01
+# 1) Return                 : 0=ok, !0=KO
+# 1) History                :
+#  2010/10/21 (S. Ouellet) Initial version.
+set_was_haservice() {
+ if [[ -z ${5} ]] # if the path is specified
+ then
+  _coregroup="DefaultCoreGroup"
+ else
+  _coregroup=${4}
+ fi
+ if [[ -n ${4} ]] # if a server is not specified
+ then # no server is specified
+  _servername="all"
+ else # a server is specified
+  _servername=${3}
+ fi
+ if [[ $1 -eq 0 ]]; # 0 means disable et 1 enable
+ then # disable it
+  exec_was_wsadmin_jython_script ${APIHOME}/scripts/jython/haservices_dis.jy ${2} ${3} ${_coregroup}
+  unset _coregroup
+  return $?
+ else # enable it 
+  exec_was_wsadmin_jython_script ${APIHOME}/scripts/jython/haservices_ena.jy ${2} ${3} ${_coregroup}
+  unset _coregroup
+  return $?
+ fi
+}

@@ -1,0 +1,79 @@
+0 122115215410 2
+devices.sddpcm.61.rte 4 R I devices.sddpcm.61 {
+devices.sddpcm.61.rte 02.05.0001.0000 1 b B en_US IBM SDD PCM for AIX V61
+[
+*prereq bos.rte 6.1.0.0
+*prereq devices.scsi.disk.rte 6.1.0.0
+*prereq bos.rte v=6 r<2
+*prereq devices.fcp.disk.ibm.mpio.rte 1.0.0.20
+%
+/etc 8
+/usr/lib/objrepos 16
+/usr/lib/drivers 3504
+/usr/lib 16
+/usr/lib/methods 80
+/usr/lib/boot/protoext 32
+/usr/lib/nls/msg/en_US 24
+/usr/sbin 1776
+/usr/bin 96
+/usr/share/man/cat1 128
+/tmp 0 14656
+INSTWORK 254 258
+/lpp/devices.sddpcm.61 66
+%
+%
+%
+%
+%
+%
+]
+}
+devices.sddpcm.53.rte 4 R I devices.sddpcm.53 {
+devices.sddpcm.53.rte 02.05.0001.0000 1 b B en_US IBM SDD PCM for AIX V53
+[
+*prereq bos.rte 5.3.0.0
+*prereq devices.scsi.disk.rte 5.3.0.0
+*prereq bos.rte v=5 r<4
+*prereq devices.fcp.disk.ibm.mpio.rte 1.0.0.20
+%
+/etc 8
+/usr/lib/objrepos 16
+/usr/lib/drivers 6576
+/usr/lib 16
+/usr/lib/methods 72
+/usr/lib/boot/protoext 32
+/usr/lib/nls/msg/en_US 24
+/usr/sbin 1720
+/usr/bin 96
+/usr/share/man/cat1 128
+/tmp 0 14656
+INSTWORK 254 258
+/lpp/devices.sddpcm.53 66
+%
+%
+%
+%
+%
+%
+]
+}
+devices.fcp.disk.ibm.mpio.rte 4 R I devices.fcp.disk.ibm.mpio {
+devices.fcp.disk.ibm.mpio.rte 01.00.0000.0020 1 b U en_US IBM MPIO FCP Disk Device
+[
+>0 {
+	*prereq devices.scsi.disk.rte 4.2.0.0
+	*prereq devices.fcp.disk.rte 5.2.0.40
+}
+%
+/usr/lib/methods 8
+/usr/lib/objrepos 8
+/tmp 0 14656
+INSTWORK 310 386
+%
+%
+%
+%
+%
+%
+]
+}

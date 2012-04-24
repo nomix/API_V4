@@ -1,0 +1,53 @@
+# sudoers file.
+#
+# This file MUST be edited with the 'visudo' command as root.
+# Failure to use 'visudo' may result in syntax or file permission errors
+# that prevent sudo from running.
+#
+# See the sudoers man page for the details on how to write a sudoers file.
+#
+
+# Host alias specification
+Host_Alias	PROD = pars001i0139, pars001i0140, pars001i0141, pars001i0149, pars001i0150
+Host_Alias	PPRD = pars001i0136, pars001i0137, pars001i0138, pars001i0147, pars001i0148
+Host_Alias	UAT = pars001i0135, pars001i0146
+Host_Alias	INT = pars001i0134, pars001i0145 
+Host_Alias	DEV = pars001i0133, pars001i0144
+Host_Alias	SAP = pars00I0105, pars001i0203, pars001i0142, pars001i0101
+Host_Alias	CRM = pars001i0133, pars001i0134, pars001i0135, pars001i0136, pars001i0137, pars001i0138, pars001i0139, pars001i0140, pars001i0141
+Host_Alias	CRMIHS = pars001i0133, pars001i0134, pars001i0135, pars001i0136, pars001i0139
+
+# User alias specification
+User_Alias	SYSADMINS	= 540601
+User_Alias	DBAS		= 286285
+User_Alias	CRMADMIN	= 404954, 540601
+User_Alias	DEVSTR		= 476312, 331937, 588683, 540601
+User_Alias	DEVEAI		= 516742, 540601
+
+# Cmnd alias specification
+Cmnd_Alias	SU = /usr/bin/su
+Cmnd_Alias	CRMAPACHE = /app/crm/IBMIHS2/bin/apachectl
+
+# Defaults specification
+
+# Runas alias specification
+Runas_Alias RAROOT = root
+Runas_Alias RAORA = oracle
+Runas_Alias    ADMINGRP = adm, oper
+
+# User privilege specification
+root	ALL=(ALL) ALL
+
+# Uncomment to allow people in group wheel to run all commands
+%sys	ALL=(ALL) ALL
+
+# Same thing without a password
+# %wheel	ALL=(ALL) NOPASSWD: ALL
+
+# Samples
+# %users  ALL=/sbin/mount /cdrom,/sbin/umount /cdrom
+# %users  localhost=/sbin/shutdown -h now
+
+CRMADMIN 	CRMIHS 	= (RAROOT) CRMAPACHE
+DBAS 		ALL	= (RAORA) SU
+SYSADMINS 	ALL	= (RAROOT) SU 

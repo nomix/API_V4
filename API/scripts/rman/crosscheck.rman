@@ -1,0 +1,6 @@
+# This script perform a crosscheck of the rman recovery catalog.
+
+CROSSCHECK BACKUP;
+CROSSCHECK ARCHIVELOG ALL;
+
+EXIT;

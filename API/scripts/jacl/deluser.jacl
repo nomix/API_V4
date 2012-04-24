@@ -1,0 +1,16 @@
+# -------------------------------------------------------------------
+# startserver.jacl
+# Syntaxe : startserver <application> <nodeName>
+# Version 1.0 11/07/2006 By S.OUELLET
+# -------------------------------------------------------------------
+set username [lindex $argv 0]
+
+set userlist [$AdminConfig list UserExt]
+set theuser [lindex $userlist [lsearch $userlist $username*]]
+
+puts "oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo"
+$AdminConfig remove $theuser
+puts " User $username deleted."
+$AdminConfig save
+puts " Configuration saved."
+puts "oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo"

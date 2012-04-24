@@ -1,0 +1,8 @@
+# This script perform a backup of archivelogs of an oracle database.
+# Database must be available for this operation to succeed.
+SHOW ALL;
+
+# Backup the archived redo logs
+# in a backupset then delete them from disk to save space.
+BACKUP ARCHIVELOG ALL DELETE ALL INPUT;
+EXIT;

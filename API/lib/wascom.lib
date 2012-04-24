@@ -1,0 +1,118 @@
+# Copyright 2010 XPRESS2PEOPLE
+# File                   : wascom.lib
+# Created on             : 2010/10/21
+# Family                 : WAS
+# Purpose                : This file contains essentials functions for the WebSphere administration and management. 
+# Developpers            :
+#   Simon Ouellet can be reached at <simon@x2p.fr>
+# History                :
+#  2010/10/21 (S. OUELLET) Initial version.
+
+# 1) Function               : exec_was_wsadminjythonscript
+# 1) Purpose                : Execute a jython script using the wsadmin.sh script
+# 1) Notes                  : Nothing
+# 1) Version                : 1.0
+# 1) Syntax                 : exec_was_wsadminjythonscript <script file wt full path> [parameter] [parameters..]
+# 1) Optionals Parameters   : [scripts parametersi]
+# 1) Mandatories Parameters : <script file name wt path}
+# 1) Example 1              : exec_was_wsadminjythonscript myscript.jy parm1 parm2
+# 1) Return                 : 0=ok, !0=KO
+# 1) History                :
+#  2010/09/15 (S. Ouellet) Initial version.
+exec_was_wsadminjythonscript() {
+ ${WASHOME}/AppServer/profiles/Dmgr02/bin/wsadmin.sh -lang jython -f ${@}
+}
+
+# 2) Function               : gen_was_tab
+# 2) Purpose                : Generate automaticaly the wastab file
+# 2) Notes                  : You can remove a profile(s), cell(s) or node by specified the list in parameter. Items are separated by |"
+# 2) Version                : 1.0
+# 2) Syntax                 : gen_was_tab <WebSphere home path> <key to remove elements>
+# 2) Optionals Parameters   : Nothing 
+# 2) Mandatories Parameters : <WebSphere home path>
+# 2) Example 1              : gen_was_tab /app/prod/WebSphere 
+# 2) Example 2              : gen_was_tab /app/prod/WebSphere "IHS|myserver001|myserver002"
+# 2) Return                 : undef  
+# 2) History                :
+#  2010/10/25 (S. Ouellet) Initial version.
+gen_was_tab() {
+_ELEMENTS_TO_REMOVE="wstemp|config.old|profileTemplates|templates|download|"${2}
+cd ${1} >/dev/null
+for dir in `find . -type d -name "servers" 2>/dev/null | egrep -v ${_ELEMENTS_TO_REMOVE}`
+do
+ _profile=`echo ${dir} | awk -F"/" '{ print $4 }'`
+ _cell=`echo ${dir} | awk -F"/" '{ print $7 }'`
+ _node=`echo ${dir} | awk -F"/" '{ print $9 }'`
+ for _server in `ls ${dir}`
+ do
+  echo ${_profile}:${_cell}:${_node}:${_server}
+ done
+done
+cd - >/dev/null
+}
+# 1) Function               : scan_was_dmgrs
+# 1) Purpose                : Find and return to STDOUT the Dmgr home path
+# 1) Notes                  : Nothing
+# 1) Version                : 1.0
+# 1) Syntax                 : 
+# 1) Optionals Parameters   : Nothing
+# 1) Mandatories Parameters : 
+# 1) Example 1              : 
+# 1) Return                 : 0=ok, !0=KO
+# 1) History                :
+#  2009/07/24 (Karim BOUDAOUD) Initial version.
+#  2010/10/21 (S. Ouellet) Import and APIX2P adaptation
+scan_was_dmgrs()
+{
+ACTION=$1
+unload_product_config ${PRODUCT}
+x=1
+load_occurence_env ${PRODUCT} ${x}
+if [ $? != 0 ]
+then
+        (( RC=RC+1 ))
+        return $RC
+fi
+OLD_HOME_CELL=0
+while [ ! -z $HOME_CELL ]
+do
+        unset DMGR_NAME
+        if [ ${HOME_CELL} != ${OLD_HOME_CELL} ]
+        then
+                if [ ${ACTION} = print ]
+                then
+                        find_dmgr_name $HOME_CELL
+                        echo "\t${DMGR_NAME}"
+                else
+                        find_dmgr_name $HOME_CELL
+                        dmgr ${HOME_CELL} ${option}
+                fi
+        fi
+        OLD_HOME_CELL=${HOME_CELL}
+        unset HOME_CELL
+        (( x=x+1 ))
+        load_occurence_env ${PRODUCT} ${x}
+        if [ $? != 0 ]
+        then
+                (( RC=RC+1 ))
+                return $RC
+        fi
+done
+unload_product_config ${PRODUCT}
+unset OLD_HOME_CELL
+return $RC
+}
+
+
+# 1) Function               : get_was_dmgrhome
+# 1) Purpose                : Find and return to STDOUT the Dmgr home path
+# 1) Notes                  : Nothing
+# 1) Version                : 1.0
+# 1) Syntax                 :
+# 1) Optionals Parameters   : Nothing
+# 1) Mandatories Parameters :
+# 1) Example 1              :
+# 1) Return                 : 0=ok, !0=KO
+# 1) History                :
+#  2009/07/24 (Karim BOUDAOUD) Initial version.
+#  2010/10/21 (S. Ouellet) Import and APIX2P adaptation

@@ -1,0 +1,44 @@
+# -------------------------------------------------------------------
+# startserver.jacl
+# Syntaxe : startserver <application> <nodeName>
+# Version 1.0 11/07/2006 By S.OUELLET
+# -------------------------------------------------------------------
+
+puts "oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo"
+puts " Roles creation.."
+# Get the 4 roles
+  set sres [$AdminConfig list SecurityRoleExt]
+  foreach sre $sres {
+    if {[string first administrator [$AdminConfig show $sre]] != -1} {
+      set sre_admin $sre
+    } elseif {[string first operator [$AdminConfig show $sre]] != -1} {
+      set sre_opera $sre
+    } elseif {[string first configurator [$AdminConfig show $sre]] != -1} {
+      set sre_confi $sre
+    } elseif {[string first monitor [$AdminConfig show $sre]] != -1} {
+      set sre_monit $sre
+    }
+  }
+
+set raes [$AdminConfig list RoleAssignmentExt]
+  foreach rae $raes {
+    set show [$AdminConfig show $rae]
+    set sre [lindex [lindex $show [lsearch $show role*]] 1]
+    if {$sre == $sre_admin} {
+      puts "\$AdminConfig create GroupExt $rae {{name administrators}}"
+      $AdminConfig create GroupExt $rae {{name administrators}}
+    } elseif {$sre == $sre_opera} {
+      puts "\$AdminConfig create GroupExt $rae {{name operators}}"
+      $AdminConfig create GroupExt $rae {{name operators}}
+    } elseif {$sre == $sre_confi} {
+      puts "\$AdminConfig create GroupExt $rae {{name configurators}}"
+      $AdminConfig create GroupExt $rae {{name configurators}}
+    } elseif {$sre == $sre_monit} {
+      puts "\$AdminConfig create GroupExt $rae {{name monitors}}"
+      $AdminConfig create GroupExt $rae {{name monitors}}
+    }
+  } 
+puts " Roles created."
+$AdminConfig save
+puts " Configuration saved."
+puts "oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo"

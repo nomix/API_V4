@@ -1,0 +1,32 @@
+set newAlias [lindex $argv 0]
+set keyFileName [lindex $argv 1]
+set keyFilePassword [lindex $argv 2]
+set keyFileFormat [lindex $argv 3]
+set trustFileName [lindex $argv 4]
+set trustFilePassword [lindex $argv 5]
+set securityLevel [lindex $argv 6]
+set clientAuthentication [lindex $argv 7]
+set enableCryptoHardwareSupport [lindex $argv 8]
+set nodename [lindex $argv 9]
+set newAlias $nodename/$newAlias
+
+
+set security_root [$AdminConfig list Security]
+
+set attrib {}
+
+lappend attrib [list keyFileName $keyFileName]
+lappend attrib [list keyFilePassword $keyFilePassword]
+lappend attrib [list keyFileFormat $keyFileFormat]
+lappend attrib [list trustFileName $trustFileName]
+lappend attrib [list trustFilePassword $trustFilePassword]
+lappend attrib [list securityLevel $securityLevel]
+lappend attrib [list clientAuthentication $clientAuthentication]
+lappend attrib [list enableCryptoHardwareSupport $enableCryptoHardwareSupport]
+
+if {[llength $attrib] != 0} {
+	set ssl_setting [list setting $attrib]
+	set ssl_entry [list [list alias $newAlias] $ssl_setting]
+	$AdminConfig create SSLConfig $security_root $ssl_entry repertoire
+	$AdminConfig save
+}

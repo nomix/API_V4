@@ -1,0 +1,12 @@
+﻿-- grep -v ^# /etc/oratab | grep : |cut -f 1 -d : | xargs -I {} mkdir -p /data/oracle/backup/{}
+-- ln -s /data/oracle/backup /home/oracle/
+-- grep -v ^# /etc/oratab | grep : |cut -f 1 -d : | xargs -p -I {} rm -rf /data/oracle/data/{}/backup
+
+
+CONFIGURE CONTROLFILE AUTOBACKUP ON;
+CONFIGURE DEVICE TYPE DISK PARALLELISM 4 BACKUP TYPE TO COMPRESSED BACKUPSET;
+CONFIGURE CONTROLFILE AUTOBACKUP FORMAT FOR DEVICE TYPE DISK TO '/data/oracle/backup/PSBL01/PSBL01_ctlf-%F.ctl';
+CONFIGURE CHANNEL 1 DEVICE TYPE DISK FORMAT '/data/oracle/backup/PSBL01/PSBL01_full-%T-seq_%s-%u-ch1.bck';
+CONFIGURE CHANNEL 2 DEVICE TYPE DISK FORMAT '/data/oracle/backup/PSBL01/PSBL01_full-%T-seq_%s-%u-ch2.bck';
+CONFIGURE CHANNEL 3 DEVICE TYPE DISK FORMAT '/data/oracle/backup/PSBL01/PSBL01_full-%T-seq_%s-%u-ch3.bck';
+CONFIGURE CHANNEL 4 DEVICE TYPE DISK FORMAT '/data/oracle/backup/PSBL01/PSBL01_full-%T-seq_%s-%u-ch4.bck';

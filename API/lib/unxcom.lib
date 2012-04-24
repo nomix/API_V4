@@ -1,0 +1,547 @@
+#!/bin/ksh
+# Copyright 2010 XPRESS2PEOPLE
+# File                   : unxcom.lib 
+# Created on             : 
+# Family                 : UNIX
+# Purpose                : Common functions libraries for UNIX
+# Developpers            :
+#   Simon Ouellet can be reached at <simon.ouellet@x2p.fr>
+#   Sylvain Ballaud can be reached at <sylvain.ballaud@x2p.fr>
+# History                :
+#  2010/09/03 (S. Ballaud) Modifications about the name of functions
+
+## Function declaration ##
+
+# 1) Function               : get_unx_monthid
+# 1) Purpose                : Return the number of the month.
+# 1) Notes                  : The name of the month is in French or in English.
+# 1) Version                : 1.0
+# 1) Syntax                 : get_unx_monthid <name_month> 
+# 1) Optionals Parameters   : Nothing
+# 1) Mandatories Parameters : <name_month : in French or in English>
+# 1) Example 1              : get_unx_monthid janvier
+# 1) Example 2              : get_unx_monthid March
+# 1) Return                 : The number of the month. 255 otherwise.      
+# 1) History                :
+get_unx_monthid() {
+if [[ `echo $1 | egrep "January|February|March|April|May|June|July|August|September|October|November|December" | wc -l` -eq 1 ]]
+then
+ curlang=en
+else
+ curlang=fr
+fi
+ 
+if [[ $curlang == "fr" ]];
+ then
+  case $1 in
+   "janvier") return 01;;
+   "fevrier") return 2;;
+   "mars") return 3;;
+   "avril") return 4;;
+   "mai") return 5;;
+   "juin") return 6;;
+   "juillet") return 7;;
+   "aout") return 8;;
+   "septembre") return 9;;
+   "octobre") return 10;;
+   "novembre") return 11;;
+   "decembre") return 12;;
+   *) return 255;;
+  esac
+ else
+  case $1 in
+   "January") return 01;;
+   "February") return 2;;
+   "March") return 3;;
+   "April") return 4;;
+   "May") return 5;;
+   "June") return 6;;
+   "July") return 7;;
+   "August") return 8;;
+   "September") return 9;;
+   "October") return 10;;
+   "November") return 11;;
+   "December") return 12;;
+   *) return 255;;
+  esac
+ fi
+}
+
+# 2) Function               : get_unx_dayid
+# 2) Purpose                : Return the number of the day.
+# 2) Notes                  : The name of the month is in French or in English. 0=Dimanche or 0=Sunday.
+# 2) Version                : 1.0
+# 2) Syntax                 : get_unx_dayid <name_day> 
+# 2) Optionals Parameters   : Nothing
+# 2) Mandatories Parameters : <name_day : in French or in English>
+# 2) Example 1              : get_unx_dayid mercredi 
+# 2) Example 2              : get_unx_dayid Monday
+# 2) Return                 : The number of a day. 255 otherwise.      
+# 2) History                :
+get_unx_dayid() {
+ if [[ $2 == "fr" ]];
+ then
+  case $1 in
+   "dimanche") return 0;;
+   "lundi") return 1;;
+   "mardi") return 2;;
+   "mercredi") return 3;;
+   "jeudi") return 4;;
+   "vendredi") return 5;;
+   "samedi") return 6;;
+   *) return 255;;
+  esac
+ else
+  case $1 in
+   "Sunday") return 0;;
+   "Monday") return 1;;
+   "Tuesday") return 2;;
+   "Wednesday") return 3;;
+   "Thursday") return 4;;
+   "Friday") return 5;;
+   "Saturday") return 6;;
+   *) return 255;;
+  esac
+ fi
+}
+
+# 3) Function               : get_unx_propval
+# 3) Purpose                : Get the value from the propertie.
+# 3) Notes                  : EXPECTEDRESULTFILE must be set and target on the expected result configuration file. 
+# 3) Version                : 1.0
+# 3) Syntax                 : get_unx_propval <property line with the value> 
+# 3) Optionals Parameters   : Nothing
+# 3) Mandatories Parameters : <property line with the value>
+# 3) Example                : get_unx_propval "Hello World"  
+# 3) Return                 : Stdout --> the value.         
+# 3) History                :
+get_unx_propval() {
+ echo $1 | awk -F"=" '{ print substr($0,length($1)+2) }'
+}
+
+# 4) Function               : get_unx_proptype
+# 4) Purpose                : Determine which kind of properties entry it is.
+# 4) Notes                  : Nothing. 
+# 4) Version                : 1.0
+# 4) Syntax                 : get_unx_proptype <property line> 
+# 4) Optionals Parameters   : Nothing
+# 4) Mandatories Parameters : <property line>
+# 4) Example                : get_unx_proptype "Hello World" 
+# 4) Return                 : 0=property line, 1=main section, 2=sub section, 3=sub sub section and 255=unknow.         
+# 4) History                :
+get_unx_proptype() {
+ case ${1} in
+  \[\[\[*\]\]\] ) return 3;;
+  \[\[*\]\] ) return 2;;
+  \[*\] ) return 1;;
+  * ) return 0;;
+ esac
+}
+
+# 5) Function               : get_unx_prop
+# 5) Purpose                : Get the propertie name.
+# 5) Notes                  : Nothing. 
+# 5) Version                : 1.0
+# 5) Syntax                 : get_unx_prop <property line> 
+# 5) Optionals Parameters   : Nothing
+# 5) Mandatories Parameters : <property line>
+# 5) Example                : get_unx_prop "Hello World" 
+# 5) Return                 : Stdout --> the propertie name.         
+# 5) History                :
+get_unx_prop() {
+ echo $1 | awk -F"=" '{ print $1 }'
+}
+
+# 6) Function               : kill_unx_process
+# 6) Purpose                : Kill a process that still running after an allowed time when it supposed to be stopped.
+# 6) Notes                  : Timeout is in seconds. 
+# 6) Version                : 1.0
+# 6) Syntax                 : kill_unx_process <process> <timeout>
+# 6) Optionals Parameters   : Nothing
+# 6) Mandatories Parameters : <process> and <timeout>
+# 6) Example                : kill_unx_process 26745 5  
+# 6) Return                 : 0=OK, 1=Process is still running, 2=error.          
+# 6) History                :
+kill_unx_process() {
+ while [[ ${WAITCOUNT} -lt ${2} ]];     #While the timeout have not been reach
+ do
+  ps $1 $1 2>&1 >> /dev/null            #check if the process is still there
+  if [[ $? -eq 1 ]];
+  then
+   return 0                             #If if the case, don't waste your time and return
+  fi
+  let WAITCOUNT=${WAITCOUNT}+1          #Increase the time counter
+  sleep 1                               #Wait a second
+ done
+ kill_unx_process $1 $1 >>/dev/null 2>&1            #Timeout is reach and the process is still there, normal kill on the process
+ sleep 5                                #wait 5 second to give a chance to finish normally
+ kill_unx_process -9 $1 >>/dev/null 2>&1            #kill -9 on the process
+ ps $1 >> /dev/null                     #check if the process is still there
+ if [[ $? -eq 1 ]];
+ then
+  return 0                              #ok the process is gone
+ else
+  return 1                              #the process is still there
+ fi
+return 2
+}
+
+# 7) Function               : add_unx_bslashc
+# 7) Purpose                : Add a backslash in front of weirds characters.
+# 7) Notes                  : Nothing. 
+# 7) Version                : 1.0
+# 7) Syntax                 : add_unx_bslashc <string>
+# 7) Optionals Parameters   : Nothing
+# 7) Mandatories Parameters : <string>
+# 7) Example                : add_unx_bslashc "$ Hello world"  
+# 7) Return                 : Nothing.           
+# 7) History                :
+add_unx_bslashc() {
+ ${APIHOME}/pl/addbackslash.pl "${1}"
+}
+
+# 8) Function               : add_unx_bslashf
+# 8) Purpose                : Add a backslash in front of weirds characters in a file.
+# 8) Notes                  : Nothing. 
+# 8) Version                : 1.0
+# 8) Syntax                 : <file> < add_unx_bslashf
+# 8) Optionals Parameters   : Nothing
+# 8) Mandatories Parameters : <file>
+# 8) Example                : toto.txt < add_unx_bslashf  
+# 8) Return                 : Nothing.          
+# 8) History                :
+add_unx_bslashf() {
+ while read -r line
+ do
+  ${APIHOME}/pl/addbackslash.pl ${line}
+ done
+}
+
+# 9) Function               : rem_unx_firstdollar
+# 9) Purpose                : Remove the first dollar sign in the beginning of a line.
+# 9) Notes                  : Nothing. 
+# 9) Version                : 1.0
+# 9) Syntax                 : rem_unx_firstdollar <string>
+# 9) Optionals Parameters   : Nothing
+# 9) Mandatories Parameters : <string>
+# 9) Example                : rem_unx_firstdollar "HelloWor$ld"  
+# 9) Return                 : Nothing.            
+# 9) History                :
+rem_unx_firstdollar() {
+ print $* | sed 's/^\$//g'
+}
+
+# 10) Function               : rm_unx_secure
+# 10) Purpose                : Secure the command rm with a directory containing files saved temporarily.
+# 10) Notes                  : Nothing.
+# 10) Version                : 1.4
+# 10) Syntax                 : rm_unx_secure [-f] [-i] [-r] [-e] [-l] [-s] [-v] <file or directory>
+# 10) Optionals Parameters   : [-f : force the deletion], [-i : interactive mode], [-r : recursive mode], [-e : empty the trash], [-l : display files saved], [-s : recover files] and [-v : verbose mode]    
+# 10) Mandatories Parameters : <file or directory>
+# 10) Example 1              : rm_unx_secure -i -v file1
+# 10) Example 2              : rm_unx_secure -r rep1
+# 10) Return                 : 0=success or 1=failed
+# 10) History
+#  2010/09/19 (S. Ballaud) Initial version from Christophe Blaess 
+function rm_unx_secure
+{
+	# Declarations de varables
+	sauvegarde_rm=${APIHOME}/tmp/.rm_saved/
+	OPTIND=1
+ 	OPTERR=0
+	local opt_force=0
+	local opt_interactive=0
+	local opt_recursive=0
+	local opt_verbose=0
+	local opt_empty=0
+	local opt_list=0
+	local opt_restore=0
+	local opt
+
+	# Analyse des arguments de la ligne de commande
+ 	while getopts ":firvels-:" opt 
+	do
+ 		case ${opt} in
+
+ 			f ) opt_force=1 ;;
+ 			i ) opt_interactive=1 ;;
+ 			r ) opt_recursive=1 ;;
+ 			e ) opt_empty=1 ;;
+ 			l ) opt_list=1 ;;
+ 			s ) opt_restore=1 ;;
+ 			v ) opt_verbose=1 ;;
+ 			
+			- ) case ${OPTARG} in
+ 				
+ 				force) opt_force=1 ;;
+ 				interactive ) opt_interactive=1 ;;
+ 				recursive ) opt_recursive=1 ;;
+ 				verbose ) opt_verbose=1 ;;
+ 				empty ) opt_empty=1 ;;
+ 				list ) opt_list=1 ;;
+ 				restore ) opt_restore=1 ;;
+ 				* ) echo "Illegal option --${OPTARG}"
+ 			          return 1;;
+ 			esac ;;
+ 		
+			? ) echo "Illegal option -${OPTARG}"
+ 			    return 1;;
+ 		esac
+ 	done
+
+# Decalage d'un argument
+shift $((${OPTIND} - 1))
+
+# Creer eventuellement le repertoire
+if [[ ! -d ${sauvegarde_rm} ]] 	
+then
+	mkdir ${sauvegarde_rm}
+fi
+
+# Vider la poubelle
+if [[ ${opt_empty} -ne 0 ]] 
+then
+	rm -rf ${sauvegarde_rm}
+ 	return 0
+fi
+
+# Liste des fichiers sauves
+if [[ ${opt_list} -ne 0 ]] 
+then
+ 	ls -lRa ${sauvegarde_rm}
+	return 0
+fi
+
+# Recuperation de fichiers
+if [[ ${opt_restore} -ne 0 ]] 
+then
+	while [[ -n ${1} ]] 
+	do
+ 		mv ${sauvegarde_rm}/${1} .
+ 		shift
+ 	done
+ 
+	return 0
+fi
+
+# Suppression de fichiers
+while [[ -n ${1} ]] 
+do
+	# Suppression interactive : interroger l'utilisateur
+ 	if [[ ${opt_force} -ne 1 ]] && [[ ${opt_interactive} -ne 0 ]]
+	then
+ 		local reponse
+ 		echo "Remove ${1} ? (y=yes or n=no) "
+ 		read reponse
+ 	
+		# Est ce que la reponse est differente de y ?	
+		if [[ ${reponse} != "y" ]] 
+		then
+			# Oui et est ce que la reponse est differente de n ?
+			if [[ ${reponse} != "n" ]]
+			then
+				# Oui alors on quitte et on indique une erreur 
+				return 1
+			fi
+
+ 			shift
+ 			continue
+ 		fi
+ 	fi
+ 
+	# Est ce que l'on a affaire a un repertoire et que -r est desactivee 
+	if [[ -d ${1} ]] && [[ ${opt_recursive} -eq 0 ]] 
+	then
+ 		# Oui 
+ 		shift
+ 		continue
+ 	fi
+ 
+	# Est ce que -v est activee
+	if [ ${opt_verbose} -ne 0 ] 	
+	then
+		# Oui
+ 		echo "Remove ${1}" 
+ 	fi
+ 
+	# Suppression de l'element
+	mv -f ${1} ${sauvegarde_rm}/
+ 	shift
+done
+
+# Quitte la fonction
+return 0
+
+}
+
+# 11) Function               : set_unx_routing 
+# 11) Purpose                : Set routing on a UNIX.
+# 11) Notes                  : Work for GNU/Linux and OpenBSD.
+# 11) Version                : 1.0
+# 11) Syntax                 : set_unx_routing 
+# 11) Optionals Parameters   : Nothing.   
+# 11) Mandatories Parameters : Nothing.
+# 11) Example                : set_unx_routing
+# 11) Return                 : 0=success or 1=failed
+# 11) History
+#  2010/09/23 (S. Ballaud) Initial version. 
+function set_unx_routing
+{
+	# S'agit-il d'une machine GNU/Linux ?
+	if [[ $(uname -s | grep "Linux") != "" ]]
+	then
+		# Oui
+		echo "1" > /proc/sys/net/ipv4/ip_forward
+		return 0
+	fi	
+	
+	# S'agit-il d'une machine OpenBSD ?
+	if [[ $(uname -s | grep "OpenBSD") != "" ]]
+	then
+		# Oui
+		sysctl net.inet.ip.forwarding=1
+		return 0
+	fi
+	
+	# Si autre cas rencontre, alors on indique une erreur
+	return 1 
+}
+
+# 12) Function               : unset_unx_routing 
+# 12) Purpose                : Unset routing on a UNIX.
+# 12) Notes                  : Work for GNU/Linux and OpenBSD.
+# 12) Version                : 1.0
+# 12) Syntax                 : unset_unx_routing 
+# 12) Optionals Parameters   : Nothing.   
+# 12) Mandatories Parameters : Nothing.
+# 12) Example                : unset_unx_routing
+# 12) Return                 : 0=success or 1=failed
+# 12) History
+#  2010/09/23 (S. Ballaud) Initial version. 
+function unset_unx_routing
+{
+	# S'agit-il d'une machine GNU/Linux ?
+	if [[ $(uname -s | grep "Linux") != "" ]]
+	then
+		# Oui
+		echo "0" > /proc/sys/net/ipv4/ip_forward
+		return 0
+	fi	
+	
+	# S'agit-il d'une machine OpenBSD ?
+	if [[ $(uname -s | grep "OpenBSD") != "" ]]
+	then
+		# Oui
+		sysctl net.inet.ip.forwarding=0
+		return 0
+	fi
+
+	# Si aucun cas rencontre, alors on indique une erreur
+	return 1 
+}
+
+# 13) Function               : get_unx_typefile 
+# 13) Purpose                : Get the type of file.
+# 13) Notes                  : Nothing.
+# 13) Version                : 1.0
+# 13) Syntax                 : get_unx_typefile <file>
+# 13) Optionals Parameters   : Nothing.   
+# 13) Mandatories Parameters : <file>
+# 13) Example                : get_unx_typefile toto
+# 13) Return                 : 0=regular file, 1=directory, 2=character device, 3=block device, 4=named pipe, 5=symbolic link, 6=socket and 255=file does not exist   
+# 17) History
+#  2010/09/23 (S. Ballaud) Initial version from Christophe Blaess. 
+function get_unx_typefile
+{
+	# Recuperation de l'argument
+	file=${1}
+
+	# S'agit-il d'un lien symbolique ?
+	if [[ -L ${file} ]]
+	then
+		# Oui
+		return 5
+	fi
+
+	# Est-ce que le fichier existe ?
+	if [[ -e ${file} ]]
+	then
+		# Oui et est-ce un fichier regulier ?
+		if [[ -f ${file} ]]
+		then
+			# Oui
+			return 0
+		fi
+
+		# Est-ce un repertoire ?
+		if [[ -d ${file} ]]
+		then
+			# Oui
+			return 1
+		fi
+	
+		# Est-ce un peripherique de type caractere ?
+		if [[ -c ${file} ]]
+		then
+			# Oui
+			return 2
+		fi
+		
+		# Est-ce un peripherique de type bloc ?
+		if [[ -b ${file} ]]
+		then
+			# Oui
+			return 3
+		fi
+
+		# Est-ce un pipe nomme ?
+		if [[ -p ${file} ]]
+		then
+			# Oui
+			return 4
+		fi
+		
+		# Est-ce un socket ?
+		if [[ -S ${file} ]]
+		then
+			# Oui
+			return 6
+		fi
+	else
+		# Non
+		return 255
+	fi
+}
+
+# 14) Function               : get_unx_regexp
+# 14) Purpose                : Get the result of the application of regular expression on a string.
+# 14) Notes                  : Nothing.
+# 14) Version                : 1.0
+# 14) Syntax                 : get_unx_regexp <string> <expression>
+# 14) Optionals Parameters   : Nothing.
+# 14) Mandatories Parameters : <string> and <expression>
+# 14) Example                : get_unx_regexp abcd '^a'
+# 14) Return                 : 0=success or 1=failed 
+# 14) History
+#  2010/09/23 (S. Ballaud) Initial version from Christophe Blaess.
+function get_unx_regexp
+{
+	# Recuperation des arguments
+	string=${1}
+	regexp=${2}
+
+	# Application de la regexp
+	echo "${string}" | grep "${regexp}" > /dev/null
+
+	# La regexp est-elle appliquee a la chaine ?
+	if [[ ${?} -eq 0 ]]
+	then
+		# Oui
+		return 0
+	else
+		# Non
+		return 1
+	fi
+}
+
+

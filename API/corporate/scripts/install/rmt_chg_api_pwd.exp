@@ -1,0 +1,25 @@
+#!/usr/bin/expect
+send "export LANG=C\r"
+set timeout -1
+spawn ssh root@[lindex $argv 0]
+#expect "*password:"
+#send "[lindex $argv 1]\r"
+expect "*@[lindex $argv 0]/]#"
+send "\r"
+expect "*@[lindex $argv 0]/]#"
+send "export LANG=C\r"
+expect "*@[lindex $argv 0]/]#"
+send "hostname\r"
+expect "*@[lindex $argv 0]/]#"
+send "passwd api\r"
+set password [lindex $argv 2]
+expect "password:"
+send "$password\r"
+expect "password:"
+send "$password\r"
+expect "*@[lindex $argv 0]/]#"
+send "pwdadm -c api\r"
+expect "*@[lindex $argv 0]/]#"
+exit
+expect eof
+exit
